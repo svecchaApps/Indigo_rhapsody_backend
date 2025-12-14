@@ -22,5 +22,6 @@ router.delete(
   roleMiddleware(["Admin"]),
   categoryController.deleteCategory
 );
+//testing the deployment
 
 module.exports = router;
