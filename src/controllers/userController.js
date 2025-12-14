@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const User = require("../models/userModel");
 const Designer = require("../models/designerModel");
+const UserStylist = require("../models/stylistUser");
 const { bucket } = require("../service/firebaseServices");
 const { admin } = require("../service/firebaseServices");
 const bcrypt = require("bcrypt");
@@ -1093,6 +1094,242 @@ exports.checkUserExists = async (req, res) => {
     }
   } catch (error) {
     console.error("Error checking user existence:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Check if user has a userStylist account
+ * Returns userStylist data if exists, otherwise prompts to create account
+ * Uses phoneNumber to identify the user
+ */
+exports.checkUserStylistAccount = async (req, res) => {
+  try {
+    // Get phoneNumber from request params or body
+    let phoneNumber = null;
+    
+    // Priority: params > body
+    if (req.params.phoneNumber) {
+      phoneNumber = req.params.phoneNumber;
+    } else if (req.body.phoneNumber) {
+      phoneNumber = req.body.phoneNumber;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required. Please provide phoneNumber in params or body.",
+      });
+    }
+
+    // Validate phoneNumber
+    if (!phoneNumber || phoneNumber.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number cannot be empty",
+      });
+    }
+
+    // Check if user exists by phoneNumber
+    const user = await User.findOne({ phoneNumber: phoneNumber });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found with the provided phone number",
+      });
+    }
+
+    // Check if userStylist account exists
+    const userStylist = await UserStylist.findOne({ userId: user._id }).populate('userId', 'displayName email phoneNumber');
+
+    if (userStylist) {
+      // User has userStylist account
+      return res.status(200).json({
+        success: true,
+        hasUserStylistAccount: true,
+        message: "User has a stylist account",
+        data: {
+          userStylistId: userStylist._id,
+          userId: userStylist.userId._id,
+          userInfo: {
+            displayName: userStylist.userId.displayName,
+            email: userStylist.userId.email,
+            phoneNumber: userStylist.userId.phoneNumber,
+          },
+          stylePreferences: userStylist.style_Preference || [],
+          fashionGoals: userStylist.fashion_goals || [],
+          bodyType: userStylist.body_type || [],
+          sizeInformation: userStylist.size_Information || [],
+          colorPreference: userStylist.color_Preference || [],
+          budgetRange: userStylist.budget_Range,
+          budgetCurrency: userStylist.budget_Currency,
+          experimental: userStylist.experimental || [],
+          goToOutfit: userStylist.go_to_outfit,
+          fashionVibe: userStylist.fashion_vibe,
+          userPictures: userStylist.user_Pictures || [],
+          createdAt: userStylist.createdAt,
+          updatedAt: userStylist.updatedAt,
+        },
+      });
+    } else {
+      // User does not have userStylist account
+      return res.status(200).json({
+        success: true,
+        hasUserStylistAccount: false,
+        message: "User does not have a stylist account. Please create one to continue.",
+        actionRequired: "create_account",
+        phoneNumber: phoneNumber,
+        userId: user._id,
+        userInfo: {
+          displayName: user.displayName,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+        },
+        instructions: {
+          message: "To create a stylist account, please provide your styling preferences, fashion goals, and other relevant information.",
+          endpoint: "/user/create-stylist-account",
+          method: "POST",
+          requiredFields: [
+            "style_Preference",
+            "fashion_goals",
+            "body_type",
+            "size_Information",
+            "color_Preference",
+            "budget_Range",
+            "budget_Currency",
+          ],
+          optionalFields: [
+            "user_Pictures",
+            "experimental",
+            "go_to_outfit",
+            "fashion_vibe",
+          ],
+        },
+      });
+    }
+  } catch (error) {
+    console.error("Error checking userStylist account:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Create a userStylist account for a user
+ * Uses phoneNumber to identify the user
+ */
+exports.createUserStylistAccount = async (req, res) => {
+  try {
+    // Get phoneNumber from request body
+    const phoneNumber = req.body.phoneNumber;
+    
+    if (!phoneNumber || phoneNumber.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required. Please provide phoneNumber in body.",
+      });
+    }
+
+    // Check if user exists by phoneNumber
+    const user = await User.findOne({ phoneNumber: phoneNumber });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found with the provided phone number",
+      });
+    }
+
+    const userId = user._id;
+
+    // Check if userStylist account already exists
+    const existingUserStylist = await UserStylist.findOne({ userId: userId });
+    if (existingUserStylist) {
+      return res.status(400).json({
+        success: false,
+        message: "User already has a stylist account",
+        data: {
+          userStylistId: existingUserStylist._id,
+        },
+      });
+    }
+
+    // Extract data from request body
+    const {
+      style_Preference = [],
+      fashion_goals = [],
+      body_type = [],
+      size_Information = [],
+      color_Preference = [],
+      budget_Range,
+      budget_Currency,
+      experimental = [],
+      go_to_outfit,
+      fashion_vibe,
+      user_Pictures = [],
+    } = req.body;
+
+    // Validate required fields
+    if (!budget_Range || !budget_Currency) {
+      return res.status(400).json({
+        success: false,
+        message: "budget_Range and budget_Currency are required fields",
+      });
+    }
+
+    // Create userStylist account
+    const userStylist = new UserStylist({
+      userId: userId,
+      style_Preference: Array.isArray(style_Preference) ? style_Preference : [],
+      fashion_goals: Array.isArray(fashion_goals) ? fashion_goals : [],
+      body_type: Array.isArray(body_type) ? body_type : [],
+      size_Information: Array.isArray(size_Information) ? size_Information : [],
+      color_Preference: Array.isArray(color_Preference) ? color_Preference : [],
+      budget_Range: budget_Range,
+      budget_Currency: budget_Currency,
+      experimental: Array.isArray(experimental) ? experimental : [],
+      go_to_outfit: go_to_outfit || "",
+      fashion_vibe: fashion_vibe || "",
+      user_Pictures: Array.isArray(user_Pictures) ? user_Pictures : [],
+    });
+
+    await userStylist.save();
+
+    // Populate user details
+    await userStylist.populate('userId', 'displayName email phoneNumber');
+
+    return res.status(201).json({
+      success: true,
+      message: "User stylist account created successfully",
+      data: {
+        userStylistId: userStylist._id,
+        userId: userStylist.userId._id,
+        userInfo: {
+          displayName: userStylist.userId.displayName,
+          email: userStylist.userId.email,
+          phoneNumber: userStylist.userId.phoneNumber,
+        },
+        stylePreferences: userStylist.style_Preference,
+        fashionGoals: userStylist.fashion_goals,
+        bodyType: userStylist.body_type,
+        sizeInformation: userStylist.size_Information,
+        colorPreference: userStylist.color_Preference,
+        budgetRange: userStylist.budget_Range,
+        budgetCurrency: userStylist.budget_Currency,
+        experimental: userStylist.experimental,
+        goToOutfit: userStylist.go_to_outfit,
+        fashionVibe: userStylist.fashion_vibe,
+        userPictures: userStylist.user_Pictures,
+        createdAt: userStylist.createdAt,
+        updatedAt: userStylist.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating userStylist account:", error);
     res.status(500).json({
       success: false,
       message: "Internal Server Error",
