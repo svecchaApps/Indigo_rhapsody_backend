@@ -796,25 +796,699 @@ exports.createAdmin = async (req, res) => {
   }
 };
 
-// Stylist Signup - Redirect to Application Process
+// POST /auth/stylist-signup - Stylist registration with Firebase
 exports.stylistSignup = async (req, res) => {
   try {
-    // Redirect to the new application process
-    return res.status(200).json({
-      success: true,
-      message: "Please use the new stylist application process",
-      data: {
-        redirectTo: "/api/stylist-application/submit",
-        note: "Stylist signup now requires application submission, payment, and approval before account creation"
-      }
+    const {
+      displayName,
+      phoneNumber,
+      email,
+      firebaseIdToken,
+      stylistName,
+      stylistEmail,
+      stylistPhone,
+      stylistAddress,
+      stylistCity,
+      stylistState,
+      stylistPincode,
+      stylistCountry,
+      stylistImage,
+      stylistBio,
+      stylistPortfolio = [],
+      stylistExperience,
+      stylistEducation,
+      stylistSkills = [],
+      stylistAvailability,
+      stylistPrice,
+      address,
+    } = req.body;
+
+    // Validate required fields
+    if (!displayName || !phoneNumber || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Display name, phone number, and Firebase ID token are required",
+      });
+    }
+
+    // Validate stylist-specific required fields
+    if (!stylistName || !stylistEmail || !stylistPhone || !stylistAddress || 
+        !stylistCity || !stylistState || !stylistPincode || !stylistCountry || 
+        !stylistImage || !stylistBio || !stylistExperience || !stylistEducation || 
+        !stylistAvailability) {
+      return res.status(400).json({
+        success: false,
+        message: "All stylist profile fields are required",
+      });
+    }
+
+    // Verify Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Firebase ID token",
+        error: firebaseError.message,
+      });
+    }
+
+    // Check if phone number matches the verified token
+    if (decodedToken.phone_number !== phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number does not match verified token",
+      });
+    }
+
+    // Check if user already exists by phone number
+    const existingUser = await User.findOne({ phoneNumber });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this phone number",
+      });
+    }
+
+    // Check if stylist profile already exists with this email or phone
+    const existingStylist = await StylistProfile.findOne({
+      $or: [
+        { stylistEmail: stylistEmail },
+        { stylistPhone: stylistPhone }
+      ]
+    });
+    if (existingStylist) {
+      return res.status(400).json({
+        success: false,
+        message: "Stylist profile already exists with this email or phone number",
+      });
+    }
+
+    // Create new user with Stylist role
+    const newUser = new User({
+      displayName,
+      phoneNumber,
+      email: email || stylistEmail,
+      firebaseUid: decodedToken.uid,
+      role: "Stylist",
+      is_creator: true,
+      address: address || [],
     });
 
+    await newUser.save();
+
+    // Create stylist profile
+    const newStylistProfile = new StylistProfile({
+      userId: newUser._id,
+      stylistName,
+      stylistEmail,
+      stylistPhone,
+      stylistAddress,
+      stylistCity,
+      stylistState,
+      stylistPincode,
+      stylistCountry,
+      stylistImage,
+      stylistBio,
+      stylistPortfolio,
+      stylistExperience,
+      stylistEducation,
+      stylistSkills,
+      stylistAvailability,
+      stylistPrice: stylistPrice || 0,
+      applicationStatus: 'submitted',
+      isApproved: false,
+      approvalStatus: 'pending',
+    });
+
+    await newStylistProfile.save();
+
+    // Generate tokens
+    const tokenPayload = {
+      id: newUser._id,
+      phoneNumber: newUser.phoneNumber,
+      role: newUser.role,
+      is_creator: newUser.is_creator,
+    };
+
+    const accessToken = generateToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Store refresh token
+    refreshTokens.add(refreshToken);
+
+    // Return user data and tokens
+    const userResponse = {
+      _id: newUser._id,
+      displayName: newUser.displayName,
+      phoneNumber: newUser.phoneNumber,
+      email: newUser.email,
+      role: newUser.role,
+      is_creator: newUser.is_creator,
+      address: newUser.address,
+      createdAt: newUser.createdAt,
+    };
+
+    const stylistResponse = {
+      _id: newStylistProfile._id,
+      stylistName: newStylistProfile.stylistName,
+      stylistEmail: newStylistProfile.stylistEmail,
+      stylistPhone: newStylistProfile.stylistPhone,
+      applicationStatus: newStylistProfile.applicationStatus,
+      approvalStatus: newStylistProfile.approvalStatus,
+      isApproved: newStylistProfile.isApproved,
+    };
+
+    return res.status(201).json({
+      success: true,
+      message: "Stylist registered successfully. Your application is pending approval.",
+      user: userResponse,
+      stylistProfile: stylistResponse,
+      accessToken,
+      refreshToken,
+      tokenType: "Bearer",
+      expiresIn: JWT_EXPIRES_IN,
+    });
   } catch (error) {
     console.error("Stylist signup error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to create stylist account",
-      error: error.message
+      message: "Stylist registration failed",
+      error: error.message,
+    });
+  }
+};
+
+// POST /auth/stylist-login - Stylist login with Firebase
+exports.stylistLogin = async (req, res) => {
+  try {
+    const { phoneNumber, firebaseIdToken } = req.body;
+
+    // Validate required fields
+    if (!phoneNumber || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and Firebase ID token are required",
+      });
+    }
+
+    // Verify Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Firebase ID token",
+        error: firebaseError.message,
+      });
+    }
+
+    // Check if phone number matches the verified token
+    if (decodedToken.phone_number !== phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number does not match verified token",
+      });
+    }
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Please register first.",
+      });
+    }
+
+    // Check if user is a stylist
+    if (user.role !== "Stylist") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. This account is not registered as a stylist.",
+      });
+    }
+
+    // Update Firebase UID if not set
+    if (!user.firebaseUid) {
+      user.firebaseUid = decodedToken.uid;
+      await user.save();
+    }
+
+    // Find stylist profile
+    const stylistProfile = await StylistProfile.findOne({ userId: user._id });
+    if (!stylistProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Stylist profile not found. Please complete your profile setup.",
+      });
+    }
+
+    // Generate tokens
+    const tokenPayload = {
+      id: user._id,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      is_creator: user.is_creator,
+    };
+
+    const accessToken = generateToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Store refresh token
+    refreshTokens.add(refreshToken);
+
+    // Return user data and tokens
+    const userResponse = {
+      _id: user._id,
+      displayName: user.displayName,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      role: user.role,
+      is_creator: user.is_creator,
+      address: user.address,
+      createdAt: user.createdAt,
+    };
+
+    const stylistResponse = {
+      _id: stylistProfile._id,
+      stylistName: stylistProfile.stylistName,
+      stylistEmail: stylistProfile.stylistEmail,
+      stylistPhone: stylistProfile.stylistPhone,
+      stylistImage: stylistProfile.stylistImage,
+      stylistBio: stylistProfile.stylistBio,
+      applicationStatus: stylistProfile.applicationStatus,
+      approvalStatus: stylistProfile.approvalStatus,
+      isApproved: stylistProfile.isApproved,
+      bookingSettings: stylistProfile.bookingSettings,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Stylist login successful",
+      user: userResponse,
+      stylistProfile: stylistResponse,
+      accessToken,
+      refreshToken,
+      tokenType: "Bearer",
+      expiresIn: JWT_EXPIRES_IN,
+    });
+  } catch (error) {
+    console.error("Stylist login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Stylist login failed",
+      error: error.message,
+    });
+  }
+};
+
+// POST /auth/user-login-check - Check if user exists by phone number with Firebase verification
+exports.userLoginCheck = async (req, res) => {
+  try {
+    const { phoneNumber, firebaseIdToken } = req.body;
+
+    // Validate required fields
+    if (!phoneNumber || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and Firebase ID token are required",
+      });
+    }
+
+    // Verify Firebase ID token to ensure OTP is verified
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Firebase ID token. Please verify OTP first.",
+        error: firebaseError.message,
+      });
+    }
+
+    // Check if phone number matches the verified token
+    if (decodedToken.phone_number !== phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number does not match verified token",
+      });
+    }
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNumber });
+
+    if (!user) {
+      // User doesn't exist - new user needs to sign up
+      return res.status(200).json({
+        success: true,
+        message: "User not found. Please sign up.",
+        isNewUser: true,
+        userId: null,
+        phoneNumber: phoneNumber,
+        firebaseUid: decodedToken.uid,
+      });
+    }
+
+    // User exists - return user ID
+    return res.status(200).json({
+      success: true,
+      message: "User found",
+      isNewUser: false,
+      userId: user._id,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      firebaseUid: decodedToken.uid,
+    });
+  } catch (error) {
+    console.error("User login check error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "User login check failed",
+      error: error.message,
+    });
+  }
+};
+
+// POST /auth/stylist-login-check - Check if stylist exists by phone number with Firebase verification
+exports.stylistLoginCheck = async (req, res) => {
+  try {
+    const { phoneNumber, firebaseIdToken } = req.body;
+
+    // Validate required fields
+    if (!phoneNumber || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and Firebase ID token are required",
+      });
+    }
+
+    // Verify Firebase ID token to ensure OTP is verified
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Firebase ID token. Please verify OTP first.",
+        error: firebaseError.message,
+      });
+    }
+
+    // Check if phone number matches the verified token
+    if (decodedToken.phone_number !== phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number does not match verified token",
+      });
+    }
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNumber });
+
+    if (!user) {
+      // User doesn't exist - new stylist needs to sign up
+      return res.status(200).json({
+        success: true,
+        message: "Stylist not found. Please sign up.",
+        isNewUser: true,
+        userId: null,
+        phoneNumber: phoneNumber,
+        firebaseUid: decodedToken.uid,
+      });
+    }
+
+    // Check if user is a stylist
+    if (user.role !== "Stylist") {
+      return res.status(200).json({
+        success: true,
+        message: "User exists but is not a stylist. Please sign up as stylist.",
+        isNewUser: true,
+        userId: null,
+        phoneNumber: phoneNumber,
+        existingUserRole: user.role,
+        firebaseUid: decodedToken.uid,
+      });
+    }
+
+    // Find stylist profile
+    const stylistProfile = await StylistProfile.findOne({ userId: user._id });
+
+    // Stylist exists - return user ID
+    return res.status(200).json({
+      success: true,
+      message: "Stylist found",
+      isNewUser: false,
+      userId: user._id,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      hasStylistProfile: !!stylistProfile,
+      stylistProfileId: stylistProfile ? stylistProfile._id : null,
+      firebaseUid: decodedToken.uid,
+    });
+  } catch (error) {
+    console.error("Stylist login check error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Stylist login check failed",
+      error: error.message,
+    });
+  }
+};
+
+// POST /auth/user-login - User login with phone number and Firebase token
+exports.userLogin = async (req, res) => {
+  try {
+    const { phoneNumber, firebaseIdToken } = req.body;
+
+    // Validate required fields
+    if (!phoneNumber || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and Firebase ID token are required",
+      });
+    }
+
+    // Verify Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Firebase ID token",
+        error: firebaseError.message,
+      });
+    }
+
+    // Check if phone number matches the verified token
+    if (decodedToken.phone_number !== phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number does not match verified token",
+      });
+    }
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Please sign up first.",
+        isNewUser: true,
+      });
+    }
+
+    // Check if user is a regular user (not stylist or admin)
+    if (user.role === "Stylist") {
+      return res.status(403).json({
+        success: false,
+        message: "This phone number is registered as a stylist. Please use stylist login.",
+      });
+    }
+
+    // Update Firebase UID if not set
+    if (!user.firebaseUid) {
+      user.firebaseUid = decodedToken.uid;
+      await user.save();
+    }
+
+    // Update last login time
+    user.last_logged_in = new Date();
+    await user.save();
+
+    // Generate tokens
+    const tokenPayload = {
+      id: user._id,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      is_creator: user.is_creator,
+    };
+
+    const accessToken = generateToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Store refresh token
+    refreshTokens.add(refreshToken);
+
+    // Return user data and tokens
+    const userResponse = {
+      _id: user._id,
+      displayName: user.displayName,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      role: user.role,
+      is_creator: user.is_creator,
+      address: user.address,
+      createdAt: user.createdAt,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "User login successful",
+      user: userResponse,
+      accessToken,
+      refreshToken,
+      tokenType: "Bearer",
+      expiresIn: JWT_EXPIRES_IN,
+    });
+  } catch (error) {
+    console.error("User login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "User login failed",
+      error: error.message,
+    });
+  }
+};
+
+// POST /auth/stylist-login-new - Stylist login with phone number and Firebase token
+exports.stylistLoginNew = async (req, res) => {
+  try {
+    const { phoneNumber, firebaseIdToken } = req.body;
+
+    // Validate required fields
+    if (!phoneNumber || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number and Firebase ID token are required",
+      });
+    }
+
+    // Verify Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Firebase ID token",
+        error: firebaseError.message,
+      });
+    }
+
+    // Check if phone number matches the verified token
+    if (decodedToken.phone_number !== phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number does not match verified token",
+      });
+    }
+
+    // Find user by phone number
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Stylist not found. Please sign up first.",
+        isNewUser: true,
+      });
+    }
+
+    // Check if user is a stylist
+    if (user.role !== "Stylist") {
+      return res.status(403).json({
+        success: false,
+        message: "This phone number is not registered as a stylist. Please use user login or sign up as stylist.",
+      });
+    }
+
+    // Update Firebase UID if not set
+    if (!user.firebaseUid) {
+      user.firebaseUid = decodedToken.uid;
+      await user.save();
+    }
+
+    // Update last login time
+    user.last_logged_in = new Date();
+    await user.save();
+
+    // Find stylist profile
+    const stylistProfile = await StylistProfile.findOne({ userId: user._id });
+    if (!stylistProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Stylist profile not found. Please complete your profile setup.",
+      });
+    }
+
+    // Generate tokens
+    const tokenPayload = {
+      id: user._id,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      is_creator: user.is_creator,
+    };
+
+    const accessToken = generateToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    // Store refresh token
+    refreshTokens.add(refreshToken);
+
+    // Return user data and tokens
+    const userResponse = {
+      _id: user._id,
+      displayName: user.displayName,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      role: user.role,
+      is_creator: user.is_creator,
+      address: user.address,
+      createdAt: user.createdAt,
+    };
+
+    const stylistResponse = {
+      _id: stylistProfile._id,
+      stylistName: stylistProfile.stylistName,
+      stylistEmail: stylistProfile.stylistEmail,
+      stylistPhone: stylistProfile.stylistPhone,
+      stylistImage: stylistProfile.stylistImage,
+      stylistBio: stylistProfile.stylistBio,
+      applicationStatus: stylistProfile.applicationStatus,
+      approvalStatus: stylistProfile.approvalStatus,
+      isApproved: stylistProfile.isApproved,
+      bookingSettings: stylistProfile.bookingSettings,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Stylist login successful",
+      user: userResponse,
+      stylistProfile: stylistResponse,
+      accessToken,
+      refreshToken,
+      tokenType: "Bearer",
+      expiresIn: JWT_EXPIRES_IN,
+    });
+  } catch (error) {
+    console.error("Stylist login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Stylist login failed",
+      error: error.message,
     });
   }
 };
