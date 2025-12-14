@@ -3,7 +3,11 @@
 ## Overview
 The UserStylist Account API provides endpoints to check if a user has a stylist account and create one if they don't. This API helps manage user styling preferences, fashion goals, and other styling-related information.
 
-**Note:** All endpoints use `phoneNumber` as the primary identifier to find users. Authentication is not required.
+**Note:** 
+- All endpoints use `phoneNumber` as the primary identifier to find users
+- Authentication is not required
+- **Auto User Creation**: If a user doesn't exist with the provided phone number, a new user account will be automatically created before checking or creating the stylist account
+- The "User not found" error will never occur - users are created automatically
 
 ## Base URL
 All endpoints are prefixed with `/user`
@@ -31,11 +35,16 @@ Check if a user has a `userStylist` account. Returns account data if exists, oth
 **For POST:**
 ```json
 {
-  "phoneNumber": "string (e.g., '+1234567890' or '1234567890')"
+  "phoneNumber": "string (e.g., '+1234567890' or '1234567890')",
+  "displayName": "string (optional - auto-generated if not provided)",
+  "email": "string (optional)"
 }
 ```
 
-**Note:** The phoneNumber must match exactly with the phoneNumber stored in the User collection.
+**Note:** 
+- If a user doesn't exist with the provided phone number, a new user account will be automatically created
+- `displayName` is optional - if not provided, it will be auto-generated as `User_XXXX` (last 4 digits of phone)
+- `email` is optional
 
 #### Response - Account Exists (200 OK)
 
@@ -128,13 +137,7 @@ Check if a user has a `userStylist` account. Returns account data if exists, oth
 }
 ```
 
-**404 Not Found - User Not Found:**
-```json
-{
-  "success": false,
-  "message": "User not found with the provided phone number"
-}
-```
+**Note:** The "User not found" error will never occur. If a user doesn't exist with the provided phone number, a new user account is automatically created before proceeding with the stylist account check.
 
 **500 Internal Server Error:**
 ```json
@@ -162,6 +165,8 @@ Create a new `userStylist` account for a user with their styling preferences and
 ```json
 {
   "phoneNumber": "string (required, e.g., '+1234567890' or '1234567890')",
+  "displayName": "string (optional - auto-generated if not provided)",
+  "email": "string (optional)",
   "style_Preference": ["array", "of", "strings"],
   "fashion_goals": ["array", "of", "strings"],
   "body_type": ["array", "of", "strings"],
@@ -185,6 +190,8 @@ Create a new `userStylist` account for a user with their styling preferences and
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `phoneNumber` | String | **Yes** | Phone number of the user (e.g., "+1234567890" or "1234567890") |
+| `displayName` | String | No | Display name for the user (auto-generated as `User_XXXX` if not provided) |
+| `email` | String | No | Email address for the user (optional) |
 | `style_Preference` | Array of Strings | No | User's style preferences (e.g., ["casual", "formal"]) |
 | `fashion_goals` | Array of Strings | No | Fashion goals (e.g., ["professional", "trendy"]) |
 | `body_type` | Array of Strings | No | Body type information |
@@ -269,13 +276,7 @@ Create a new `userStylist` account for a user with their styling preferences and
 }
 ```
 
-**404 Not Found - User Not Found:**
-```json
-{
-  "success": false,
-  "message": "User not found with the provided phone number"
-}
-```
+**Note:** The "User not found" error will never occur. If a user doesn't exist with the provided phone number, a new user account is automatically created before creating the stylist account.
 
 **500 Internal Server Error:**
 ```json
@@ -303,9 +304,13 @@ curl -X GET "http://localhost:5000/user/check-stylist-account/+1234567890" \
 curl -X POST "http://localhost:5000/user/check-stylist-account" \
   -H "Content-Type: application/json" \
   -d '{
-    "phoneNumber": "+1234567890"
+    "phoneNumber": "+1234567890",
+    "displayName": "John Doe",
+    "email": "john@example.com"
   }'
 ```
+
+**Note:** `displayName` and `email` are optional. If the user doesn't exist, they will be used when creating the new user account.
 
 ### Example 3: Create UserStylist Account
 
@@ -314,6 +319,8 @@ curl -X POST "http://localhost:5000/user/create-stylist-account" \
   -H "Content-Type: application/json" \
   -d '{
     "phoneNumber": "+1234567890",
+    "displayName": "John Doe",
+    "email": "john@example.com",
     "style_Preference": ["casual", "formal", "bohemian"],
     "fashion_goals": ["professional", "trendy"],
     "body_type": ["hourglass"],
@@ -425,7 +432,12 @@ curl -X POST "http://localhost:5000/user/create-stylist-account" \
 
 5. **Duplicate Prevention**: The system prevents creating duplicate `userStylist` accounts for the same user (identified by phoneNumber).
 
-6. **User Validation**: The API validates that the user exists in the User collection (by phoneNumber) before creating or checking for a `userStylist` account.
+6. **Auto User Creation**: If a user doesn't exist with the provided phone number, the API automatically creates a new user account with:
+   - `phoneNumber`: From the request
+   - `displayName`: From request body (if provided) or auto-generated as `User_XXXX` (last 4 digits)
+   - `email`: From request body (if provided) or null
+   - `role`: Defaults to "User"
+   - This ensures the "User not found" error never occurs
 
 7. **Phone Number Format**: Phone numbers should match the format stored in your User collection. Common formats include:
    - International format: "+1234567890"

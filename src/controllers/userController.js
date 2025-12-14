@@ -1132,13 +1132,21 @@ exports.checkUserStylistAccount = async (req, res) => {
       });
     }
 
-    // Check if user exists by phoneNumber
-    const user = await User.findOne({ phoneNumber: phoneNumber });
+    // Check if user exists by phoneNumber, if not create one
+    let user = await User.findOne({ phoneNumber: phoneNumber });
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found with the provided phone number",
+      // Create new user account automatically
+      const displayName = req.body.displayName || `User_${phoneNumber.slice(-4)}`;
+      const email = req.body.email || null;
+      
+      user = new User({
+        phoneNumber: phoneNumber,
+        displayName: displayName,
+        email: email,
+        role: "User",
       });
+      
+      await user.save();
     }
 
     // Check if userStylist account exists
@@ -1235,13 +1243,21 @@ exports.createUserStylistAccount = async (req, res) => {
       });
     }
 
-    // Check if user exists by phoneNumber
-    const user = await User.findOne({ phoneNumber: phoneNumber });
+    // Check if user exists by phoneNumber, if not create one
+    let user = await User.findOne({ phoneNumber: phoneNumber });
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found with the provided phone number",
+      // Create new user account automatically
+      const displayName = req.body.displayName || `User_${phoneNumber.slice(-4)}`;
+      const email = req.body.email || null;
+      
+      user = new User({
+        phoneNumber: phoneNumber,
+        displayName: displayName,
+        email: email,
+        role: "User",
       });
+      
+      await user.save();
     }
 
     const userId = user._id;
