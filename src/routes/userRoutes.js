@@ -57,7 +57,6 @@ router.post("/user-designer", userController.createUserAndDesigner);
 router.post("/login", userController.loginDesigner);
 router.post("/adminLogin", userController.loginAdmin);
 
-// Check if user has userStylist account (by phoneNumber - no auth required)
 router.get(
   "/check-stylist-account/:phoneNumber",
   userController.checkUserStylistAccount
