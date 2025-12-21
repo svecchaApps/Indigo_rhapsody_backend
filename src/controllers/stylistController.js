@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const StylistProfile = require("../models/stylistProfile");
+const StylistCategory = require("../models/stylistCategoryModel");
 const User = require("../models/userModel");
 const {
     createNotification,
@@ -82,6 +83,22 @@ exports.createStylistProfile = async (req, res) => {
             });
         }
 
+        // Validate categories if provided
+        let categoryIds = [];
+        if (req.body.stylistCategories && Array.isArray(req.body.stylistCategories)) {
+            for (const catId of req.body.stylistCategories) {
+                if (mongoose.Types.ObjectId.isValid(catId)) {
+                    const category = await StylistCategory.findOne({ 
+                        _id: catId, 
+                        isActive: true 
+                    });
+                    if (category) {
+                        categoryIds.push(catId);
+                    }
+                }
+            }
+        }
+
         // Create stylist profile
         const stylistProfile = new StylistProfile({
             userId,
@@ -99,6 +116,7 @@ exports.createStylistProfile = async (req, res) => {
             stylistExperience,
             stylistEducation,
             stylistSkills,
+            stylistCategories: categoryIds,
             stylistAvailability,
             stylistPrice: stylistPrice || 0,
             stylistRating: 0,
@@ -111,8 +129,9 @@ exports.createStylistProfile = async (req, res) => {
 
         await stylistProfile.save();
 
-        // Populate user details
+        // Populate user details and categories
         await stylistProfile.populate('userId', 'displayName email phoneNumber role');
+        await stylistProfile.populate('stylistCategories', 'name description image icon');
 
         return res.status(201).json({
             success: true,
@@ -146,7 +165,8 @@ exports.getStylistProfile = async (req, res) => {
         }
 
         const stylistProfile = await StylistProfile.findOne({ userId })
-            .populate('userId', 'displayName email phoneNumber role profilePicture');
+            .populate('userId', 'displayName email phoneNumber role profilePicture')
+            .populate('stylistCategories', 'name description image icon');
 
         if (!stylistProfile) {
             return res.status(404).json({
@@ -179,7 +199,8 @@ exports.getMyStylistProfile = async (req, res) => {
         const userId = req.user._id;
 
         const stylistProfile = await StylistProfile.findOne({ userId })
-            .populate('userId', 'displayName email phoneNumber role profilePicture');
+            .populate('userId', 'displayName email phoneNumber role profilePicture')
+            .populate('stylistCategories', 'name description image icon');
 
         if (!stylistProfile) {
             return res.status(404).json({
@@ -238,11 +259,30 @@ exports.updateStylistProfile = async (req, res) => {
             });
         }
 
+        // Handle category updates if provided
+        if (updateData.stylistCategories && Array.isArray(updateData.stylistCategories)) {
+            let categoryIds = [];
+            for (const catId of updateData.stylistCategories) {
+                if (mongoose.Types.ObjectId.isValid(catId)) {
+                    const category = await StylistCategory.findOne({ 
+                        _id: catId, 
+                        isActive: true 
+                    });
+                    if (category) {
+                        categoryIds.push(catId);
+                    }
+                }
+            }
+            updateData.stylistCategories = categoryIds;
+        }
+
         const stylistProfile = await StylistProfile.findOneAndUpdate(
             { userId },
             updateData,
             { new: true, runValidators: true }
-        ).populate('userId', 'displayName email phoneNumber role profilePicture');
+        )
+        .populate('userId', 'displayName email phoneNumber role profilePicture')
+        .populate('stylistCategories', 'name description image icon');
 
         if (!stylistProfile) {
             return res.status(404).json({
@@ -320,6 +360,7 @@ exports.getAllStylistProfiles = async (req, res) => {
 
         const stylistProfiles = await StylistProfile.find(query)
             .populate('userId', 'displayName email phoneNumber role profilePicture')
+            .populate('stylistCategories', 'name description image icon')
             .sort(sort)
             .skip(skip)
             .limit(parseInt(limit));
@@ -361,6 +402,8 @@ exports.getApprovedStylistProfiles = async (req, res) => {
             state = '',
             minRating = 0,
             maxPrice = null,
+            category = '',
+            categoryId = '',
             sortBy = 'stylistRating',
             sortOrder = 'desc'
         } = req.query;
@@ -394,12 +437,29 @@ exports.getApprovedStylistProfiles = async (req, res) => {
             query.stylistPrice = { $lte: parseFloat(maxPrice) };
         }
 
+        // Filter by category
+        if (categoryId) {
+            if (mongoose.Types.ObjectId.isValid(categoryId)) {
+                query.stylistCategories = { $in: [new mongoose.Types.ObjectId(categoryId)] };
+            }
+        } else if (category) {
+            // Find category by name
+            const categoryDoc = await StylistCategory.findOne({ 
+                name: { $regex: category, $options: 'i' },
+                isActive: true
+            });
+            if (categoryDoc) {
+                query.stylistCategories = { $in: [categoryDoc._id] };
+            }
+        }
+
         // Build sort object
         const sort = {};
         sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
         const stylistProfiles = await StylistProfile.find(query)
             .populate('userId', 'displayName email phoneNumber profilePicture')
+            .populate('stylistCategories', 'name description image icon')
             .sort(sort)
             .skip(skip)
             .limit(parseInt(limit));
@@ -612,6 +672,7 @@ exports.getPendingStylistProfiles = async (req, res) => {
             approvalStatus: 'pending'
         })
             .populate('userId', 'displayName email phoneNumber role profilePicture')
+            .populate('stylistCategories', 'name description image icon')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(parseInt(limit));

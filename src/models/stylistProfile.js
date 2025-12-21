@@ -69,6 +69,10 @@ const stylistProfileSchema = new mongoose.Schema({
         type: String,
         required: true,
     }],
+    stylistCategories: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "StylistCategory",
+    }],
     stylistAvailability: {
         type: String,
         required: true,
@@ -275,6 +279,7 @@ stylistProfileSchema.index({ applicationStatus: 1 });
 stylistProfileSchema.index({ isApproved: 1 });
 stylistProfileSchema.index({ stylistEmail: 1 });
 stylistProfileSchema.index({ 'bookingSettings.isAvailableForBooking': 1 });
+stylistProfileSchema.index({ stylistCategories: 1 });
 
 // Pre-save middleware to update the updatedAt field
 stylistProfileSchema.pre('save', function (next) {

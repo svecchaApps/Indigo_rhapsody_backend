@@ -12,6 +12,16 @@ router.get(
     stylistController.getApprovedStylistProfiles
 );
 
+router.get(
+    "/categories",
+    stylistController.getStylistCategories
+);
+
+router.get(
+    "/category/:categoryId",
+    stylistController.getStylistsByCategory
+);
+
 // User routes (authentication required)
 router.post(
     "/create",
@@ -77,6 +87,14 @@ router.post(
 router.get(
     "/profile/:userId",
     stylistController.getStylistProfile
+);
+
+// Admin routes for category management
+router.post(
+    "/category/create",
+    authMiddleware,
+    roleMiddleware(["Admin"]),
+    stylistController.createStylistCategory
 );
 
 module.exports = router;
