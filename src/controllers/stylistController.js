@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const StylistProfile = require("../models/stylistProfile");
 const StylistCategory = require("../models/stylistCategoryModel");
+const StylistBooking = require("../models/stylistBooking");
 const User = require("../models/userModel");
 const {
     createNotification,
@@ -977,6 +978,202 @@ exports.createStylistCategory = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error creating stylist category",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Get Top Stylists Algorithm
+ * 
+ * Scoring Algorithm:
+ * 1. Booking Score (0-50 points):
+ *    - Based on completed bookings count
+ *    - Normalized to 0-50 scale
+ *    - Formula: (completedBookings / maxBookings) * 50
+ * 
+ * 2. Rating Score (0-50 points):
+ *    - Based on stylist rating (0-5 scale)
+ *    - Normalized to 0-50 scale
+ *    - Formula: (rating / 5) * 50
+ * 
+ * 3. Combined Score (0-100 points):
+ *    - Total Score = Booking Score + Rating Score
+ *    - Higher score = Better ranking
+ * 
+ * Additional Factors:
+ * - Only approved stylists are considered
+ * - Minimum 1 completed booking required
+ * - Minimum rating of 0 (unrated stylists get 0 rating score)
+ */
+exports.getTopStylists = async (req, res) => {
+    try {
+        const {
+            limit = 10,
+            minBookings = 1,
+            minRating = 0,
+            categoryId = '',
+            city = '',
+            state = ''
+        } = req.query;
+
+        // Build base query for approved stylists only
+        let query = {
+            isApproved: true,
+            approvalStatus: 'approved',
+            applicationStatus: 'approved',
+            'bookingSettings.isAvailableForBooking': true
+        };
+
+        // Additional filters
+        if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+            query.stylistCategories = { $in: [new mongoose.Types.ObjectId(categoryId)] };
+        }
+
+        if (city) {
+            query.stylistCity = { $regex: city, $options: 'i' };
+        }
+
+        if (state) {
+            query.stylistState = { $regex: state, $options: 'i' };
+        }
+
+        // Get all approved stylists matching filters
+        const stylists = await StylistProfile.find(query)
+            .populate('userId', 'displayName email phoneNumber profilePicture')
+            .populate('stylistCategories', 'name description image icon');
+
+        // Get booking statistics for each stylist
+        const stylistsWithStats = await Promise.all(
+            stylists.map(async (stylist) => {
+                // Get completed bookings count
+                const completedBookings = await StylistBooking.countDocuments({
+                    stylistId: stylist._id,
+                    status: 'completed',
+                    paymentStatus: 'completed'
+                });
+
+                // Get total bookings count
+                const totalBookings = await StylistBooking.countDocuments({
+                    stylistId: stylist._id,
+                    status: { $in: ['completed', 'confirmed', 'in_progress'] }
+                });
+
+                // Get average rating from bookings (if available)
+                const ratingAggregation = await StylistBooking.aggregate([
+                    {
+                        $match: {
+                            stylistId: stylist._id,
+                            status: 'completed',
+                            userRating: { $exists: true, $gt: 0 }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            avgRating: { $avg: '$userRating' },
+                            ratingCount: { $sum: 1 }
+                        }
+                    }
+                ]);
+
+                // Use booking-based rating if available, otherwise use profile rating
+                let finalRating = stylist.stylistRating || 0;
+                let ratingCount = 0;
+                
+                if (ratingAggregation.length > 0 && ratingAggregation[0].avgRating) {
+                    finalRating = ratingAggregation[0].avgRating;
+                    ratingCount = ratingAggregation[0].ratingCount;
+                }
+
+                return {
+                    stylist,
+                    completedBookings,
+                    totalBookings,
+                    rating: finalRating,
+                    ratingCount
+                };
+            })
+        );
+
+        // Filter by minimum requirements
+        const filteredStylists = stylistsWithStats.filter(item => {
+            return item.completedBookings >= parseInt(minBookings) &&
+                   item.rating >= parseFloat(minRating);
+        });
+
+        // Find max bookings for normalization
+        const maxBookings = Math.max(
+            ...filteredStylists.map(item => item.completedBookings),
+            1 // Prevent division by zero
+        );
+
+        // Calculate scores and rank
+        const rankedStylists = filteredStylists.map(item => {
+            // Booking Score (0-50 points)
+            const bookingScore = (item.completedBookings / maxBookings) * 50;
+
+            // Rating Score (0-50 points)
+            // Normalize rating from 0-5 scale to 0-50 points
+            const ratingScore = (item.rating / 5) * 50;
+
+            // Combined Score (0-100 points)
+            const combinedScore = bookingScore + ratingScore;
+
+            return {
+                stylistProfile: item.stylist,
+                stats: {
+                    completedBookings: item.completedBookings,
+                    totalBookings: item.totalBookings,
+                    rating: Math.round(item.rating * 10) / 10, // Round to 1 decimal
+                    ratingCount: item.ratingCount
+                },
+                scores: {
+                    bookingScore: Math.round(bookingScore * 100) / 100,
+                    ratingScore: Math.round(ratingScore * 100) / 100,
+                    combinedScore: Math.round(combinedScore * 100) / 100
+                },
+                rank: 0 // Will be set after sorting
+            };
+        });
+
+        // Sort by combined score (descending)
+        rankedStylists.sort((a, b) => b.scores.combinedScore - a.scores.combinedScore);
+
+        // Assign ranks
+        rankedStylists.forEach((item, index) => {
+            item.rank = index + 1;
+        });
+
+        // Limit results
+        const topStylists = rankedStylists.slice(0, parseInt(limit));
+
+        return res.status(200).json({
+            success: true,
+            message: "Top stylists retrieved successfully",
+            data: {
+                topStylists,
+                totalFound: rankedStylists.length,
+                algorithm: {
+                    description: "Combined scoring algorithm based on bookings and ratings",
+                    bookingWeight: "50% (0-50 points)",
+                    ratingWeight: "50% (0-50 points)",
+                    maxScore: 100,
+                    factors: [
+                        "Completed bookings count",
+                        "Stylist rating (0-5 scale)",
+                        "Only approved stylists",
+                        "Minimum booking and rating filters applied"
+                    ]
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error getting top stylists:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error retrieving top stylists",
             error: error.message
         });
     }

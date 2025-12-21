@@ -13,6 +13,11 @@ router.get(
 );
 
 router.get(
+    "/top",
+    stylistController.getTopStylists
+);
+
+router.get(
     "/categories",
     stylistController.getStylistCategories
 );

@@ -164,7 +164,174 @@ GET /stylist/approved?category=Personal Styling&city=Mumbai&minRating=4.0&maxPri
 
 ---
 
-### 2. Get All Stylist Profiles (Admin)
+### 2. Get Top Stylists (Public)
+
+Get top stylists ranked by a combined algorithm based on number of bookings and ratings. This is a public endpoint that doesn't require authentication.
+
+#### Endpoint
+- **GET** `/stylist/top`
+
+#### Authentication
+❌ Not Required
+
+#### Algorithm
+
+The ranking algorithm uses a combined scoring system:
+
+1. **Booking Score (0-50 points)**:
+   - Based on completed bookings count
+   - Normalized to 0-50 scale
+   - Formula: `(completedBookings / maxBookings) * 50`
+
+2. **Rating Score (0-50 points)**:
+   - Based on stylist rating (0-5 scale)
+   - Normalized to 0-50 scale
+   - Formula: `(rating / 5) * 50`
+   - Uses booking-based ratings if available, otherwise uses profile rating
+
+3. **Combined Score (0-100 points)**:
+   - Total Score = Booking Score + Rating Score
+   - Higher score = Better ranking
+
+**Additional Factors:**
+- Only approved stylists are considered
+- Minimum completed bookings filter (default: 1)
+- Minimum rating filter (default: 0)
+- Supports category and location filtering
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | Number | No | 10 | Number of top stylists to return |
+| `minBookings` | Number | No | 1 | Minimum completed bookings required |
+| `minRating` | Number | No | 0 | Minimum rating required (0-5 scale) |
+| `categoryId` | String (ObjectId) | No | - | Filter by category ID |
+| `city` | String | No | - | Filter by city (case-insensitive) |
+| `state` | String | No | - | Filter by state (case-insensitive) |
+
+#### Example Request
+
+```bash
+GET /stylist/top?limit=10&minBookings=5&minRating=4.0&city=Mumbai
+```
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Top stylists retrieved successfully",
+  "data": {
+    "topStylists": [
+      {
+        "rank": 1,
+        "stylistProfile": {
+          "_id": "507f1f77bcf86cd799439011",
+          "userId": {
+            "_id": "507f191e810c19729de860ea",
+            "displayName": "John Doe",
+            "email": "john@example.com",
+            "phoneNumber": "+1234567890",
+            "profilePicture": "https://example.com/profile.jpg"
+          },
+          "stylistName": "John's Fashion Studio",
+          "stylistCity": "Mumbai",
+          "stylistState": "Maharashtra",
+          "stylistImage": "https://example.com/stylist.jpg",
+          "stylistCategories": [
+            {
+              "_id": "507f1f77bcf86cd799439012",
+              "name": "Personal Styling",
+              "description": "One-on-one personal styling services"
+            }
+          ]
+        },
+        "stats": {
+          "completedBookings": 150,
+          "totalBookings": 180,
+          "rating": 4.8,
+          "ratingCount": 120
+        },
+        "scores": {
+          "bookingScore": 50.0,
+          "ratingScore": 48.0,
+          "combinedScore": 98.0
+        }
+      },
+      {
+        "rank": 2,
+        "stylistProfile": {
+          "_id": "507f1f77bcf86cd799439013",
+          "stylistName": "Jane's Styling",
+          "stylistCity": "Mumbai",
+          "stylistState": "Maharashtra"
+        },
+        "stats": {
+          "completedBookings": 120,
+          "totalBookings": 150,
+          "rating": 4.7,
+          "ratingCount": 95
+        },
+        "scores": {
+          "bookingScore": 40.0,
+          "ratingScore": 47.0,
+          "combinedScore": 87.0
+        }
+      }
+    ],
+    "totalFound": 25,
+    "algorithm": {
+      "description": "Combined scoring algorithm based on bookings and ratings",
+      "bookingWeight": "50% (0-50 points)",
+      "ratingWeight": "50% (0-50 points)",
+      "maxScore": 100,
+      "factors": [
+        "Completed bookings count",
+        "Stylist rating (0-5 scale)",
+        "Only approved stylists",
+        "Minimum booking and rating filters applied"
+      ]
+    }
+  }
+}
+```
+
+#### Filter Examples
+
+**Get Top 10 Stylists:**
+```bash
+GET /stylist/top?limit=10
+```
+
+**Get Top Stylists with Minimum Bookings:**
+```bash
+GET /stylist/top?limit=10&minBookings=10
+```
+
+**Get Top Stylists with Minimum Rating:**
+```bash
+GET /stylist/top?limit=10&minRating=4.5
+```
+
+**Get Top Stylists by Category:**
+```bash
+GET /stylist/top?limit=10&categoryId=507f1f77bcf86cd799439012
+```
+
+**Get Top Stylists by Location:**
+```bash
+GET /stylist/top?limit=10&city=Mumbai&state=Maharashtra
+```
+
+**Combined Filters:**
+```bash
+GET /stylist/top?limit=10&minBookings=5&minRating=4.0&city=Mumbai&categoryId=507f1f77bcf86cd799439012
+```
+
+---
+
+### 3. Get All Stylist Profiles (Admin)
 
 Get a paginated list of all stylist profiles with advanced filtering and search capabilities. Admin only.
 
