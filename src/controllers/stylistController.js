@@ -785,3 +785,199 @@ exports.getStylistStatistics = async (req, res) => {
         });
     }
 };
+
+// Get all stylist categories
+exports.getStylistCategories = async (req, res) => {
+    try {
+        const { isActive } = req.query;
+        
+        let query = {};
+        if (isActive !== undefined) {
+            query.isActive = isActive === 'true';
+        }
+
+        const categories = await StylistCategory.find(query)
+            .sort({ displayOrder: 1, name: 1 });
+
+        return res.status(200).json({
+            success: true,
+            message: "Stylist categories retrieved successfully",
+            data: {
+                categories,
+                totalCategories: categories.length
+            }
+        });
+
+    } catch (error) {
+        console.error("Error getting stylist categories:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error retrieving stylist categories",
+            error: error.message
+        });
+    }
+};
+
+// Get stylists by category
+exports.getStylistsByCategory = async (req, res) => {
+    try {
+        const { categoryId } = req.params;
+        const {
+            page = 1,
+            limit = 10,
+            city = '',
+            state = '',
+            minRating = 0,
+            maxPrice = null,
+            sortBy = 'stylistRating',
+            sortOrder = 'desc'
+        } = req.query;
+
+        // Validate categoryId
+        if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid category ID format"
+            });
+        }
+
+        // Check if category exists
+        const category = await StylistCategory.findOne({ 
+            _id: categoryId, 
+            isActive: true 
+        });
+
+        if (!category) {
+            return res.status(404).json({
+                success: false,
+                message: "Category not found or inactive"
+            });
+        }
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Build query
+        let query = {
+            isApproved: true,
+            approvalStatus: 'approved',
+            applicationStatus: 'approved',
+            'bookingSettings.isAvailableForBooking': true,
+            stylistCategories: { $in: [new mongoose.Types.ObjectId(categoryId)] }
+        };
+
+        // Filter by location
+        if (city) {
+            query.stylistCity = { $regex: city, $options: 'i' };
+        }
+
+        if (state) {
+            query.stylistState = { $regex: state, $options: 'i' };
+        }
+
+        // Filter by rating
+        if (minRating > 0) {
+            query.stylistRating = { $gte: parseFloat(minRating) };
+        }
+
+        // Filter by price
+        if (maxPrice !== null && maxPrice !== '') {
+            query.stylistPrice = { $lte: parseFloat(maxPrice) };
+        }
+
+        // Build sort object
+        const sort = {};
+        sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        const stylistProfiles = await StylistProfile.find(query)
+            .populate('userId', 'displayName email phoneNumber profilePicture')
+            .populate('stylistCategories', 'name description image icon')
+            .sort(sort)
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalProfiles = await StylistProfile.countDocuments(query);
+
+        return res.status(200).json({
+            success: true,
+            message: `Stylists in category '${category.name}' retrieved successfully`,
+            data: {
+                category: {
+                    _id: category._id,
+                    name: category.name,
+                    description: category.description,
+                    image: category.image,
+                    icon: category.icon
+                },
+                stylistProfiles,
+                pagination: {
+                    currentPage: parseInt(page),
+                    totalPages: Math.ceil(totalProfiles / parseInt(limit)),
+                    totalProfiles,
+                    hasNextPage: skip + stylistProfiles.length < totalProfiles,
+                    hasPrevPage: parseInt(page) > 1
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error getting stylists by category:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error retrieving stylists by category",
+            error: error.message
+        });
+    }
+};
+
+// Create stylist category (Admin only)
+exports.createStylistCategory = async (req, res) => {
+    try {
+        const { name, description, image, icon, displayOrder } = req.body;
+
+        if (!name || name.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: "Category name is required"
+            });
+        }
+
+        // Check if category already exists
+        const existingCategory = await StylistCategory.findOne({ 
+            name: { $regex: new RegExp(`^${name.trim()}$`, 'i') }
+        });
+
+        if (existingCategory) {
+            return res.status(400).json({
+                success: false,
+                message: "Category with this name already exists"
+            });
+        }
+
+        const category = new StylistCategory({
+            name: name.trim(),
+            description: description || '',
+            image: image || '',
+            icon: icon || '',
+            displayOrder: displayOrder || 0,
+            isActive: true
+        });
+
+        await category.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Stylist category created successfully",
+            data: {
+                category
+            }
+        });
+
+    } catch (error) {
+        console.error("Error creating stylist category:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error creating stylist category",
+            error: error.message
+        });
+    }
+};
