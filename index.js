@@ -28,6 +28,7 @@ const stylistRoutes = require("./src/routes/stylistRoutes.js");
 const stylistApplicationRoutes = require("./src/routes/stylistApplicationRoutes.js");
 const stylistBookingRoutes = require("./src/routes/stylistBookingRoutes.js");
 const stylistCalendarRoutes = require("./src/routes/stylistCalendarRoutes.js");
+const stylistBannerRoutes = require("./src/routes/stylistBannerRoutes.js");
 
 const app = express();
 
@@ -93,6 +94,7 @@ app.use("/stylist", stylistRoutes);
 app.use("/stylist-application", stylistApplicationRoutes);
 app.use("/stylist-booking", stylistBookingRoutes);
 app.use("/stylist-calendar", stylistCalendarRoutes);
+app.use("/stylist-banner", stylistBannerRoutes);
 
 app.get("/health", (req, res) => {
   const dbInfo = getDatabaseInfo();
