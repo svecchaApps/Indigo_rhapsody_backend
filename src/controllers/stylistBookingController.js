@@ -919,6 +919,205 @@ class StylistBookingController {
             });
         }
     }
+
+    /**
+     * Get user's upcoming sessions
+     * Returns upcoming bookings that are scheduled in the future
+     * Returns dummy data if no bookings exist
+     */
+    static async getUpcomingSessions(req, res) {
+        try {
+            const userId = req.user._id;
+            const { limit = 10 } = req.query;
+
+            const now = new Date();
+
+            // Build query for upcoming sessions
+            // Get bookings that are scheduled in the future and not cancelled/completed
+            const query = {
+                userId: userId,
+                status: { $in: ['pending', 'confirmed', 'in_progress'] },
+                isCancelled: false
+            };
+
+            // Get all bookings matching the query
+            const allBookings = await StylistBooking.find(query)
+                .populate('stylistId', 'stylistName stylistImage stylistBio stylistCity stylistState stylistPhone stylistEmail')
+                .sort({ scheduledDate: 1, scheduledTime: 1 });
+
+            // Filter for upcoming sessions (scheduled date/time in the future)
+            const upcomingSessions = allBookings.filter(booking => {
+                const scheduledDate = new Date(booking.scheduledDate);
+                const [hours, minutes] = booking.scheduledTime.split(':');
+                scheduledDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                return scheduledDate > now;
+            });
+
+            // Limit results
+            const limitedSessions = upcomingSessions.slice(0, parseInt(limit));
+
+            // If no upcoming sessions, return dummy data
+            if (limitedSessions.length === 0) {
+                const dummySessions = [
+                    {
+                        _id: "507f1f77bcf86cd799439011",
+                        bookingId: "BOOK_1703123456789_abc123def",
+                        userId: userId,
+                        stylistId: {
+                            _id: "507f191e810c19729de860ea",
+                            stylistName: "Sarah's Fashion Studio",
+                            stylistImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400",
+                            stylistBio: "Professional stylist with 8+ years of experience",
+                            stylistCity: "Mumbai",
+                            stylistState: "Maharashtra",
+                            stylistPhone: "+1234567890",
+                            stylistEmail: "sarah.stylist@example.com"
+                        },
+                        bookingType: "consultation",
+                        bookingTitle: "Personal Styling Consultation",
+                        bookingDescription: "Initial consultation to understand your style preferences and fashion goals",
+                        scheduledDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 days from now
+                        scheduledTime: "14:00",
+                        duration: 60,
+                        timezone: "Asia/Kolkata",
+                        status: "confirmed",
+                        paymentStatus: "completed",
+                        paymentAmount: 2000,
+                        paymentCurrency: "INR",
+                        paymentMethod: "razorpay",
+                        videoCallStatus: "not_started",
+                        isRescheduled: false,
+                        isCancelled: false,
+                        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
+                        updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+                    },
+                    {
+                        _id: "507f1f77bcf86cd799439012",
+                        bookingId: "BOOK_1703123456790_def456ghi",
+                        userId: userId,
+                        stylistId: {
+                            _id: "507f191e810c19729de860eb",
+                            stylistName: "Michael's Style Lab",
+                            stylistImage: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
+                            stylistBio: "Award-winning stylist specializing in contemporary fashion",
+                            stylistCity: "Delhi",
+                            stylistState: "Delhi",
+                            stylistPhone: "+1234567891",
+                            stylistEmail: "michael.stylist@example.com"
+                        },
+                        bookingType: "styling_session",
+                        bookingTitle: "Complete Wardrobe Makeover",
+                        bookingDescription: "Full wardrobe consultation and styling session",
+                        scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+                        scheduledTime: "10:00",
+                        duration: 120,
+                        timezone: "Asia/Kolkata",
+                        status: "confirmed",
+                        paymentStatus: "completed",
+                        paymentAmount: 5000,
+                        paymentCurrency: "INR",
+                        paymentMethod: "razorpay",
+                        videoCallStatus: "not_started",
+                        isRescheduled: false,
+                        isCancelled: false,
+                        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
+                        updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+                    },
+                    {
+                        _id: "507f1f77bcf86cd799439013",
+                        bookingId: "BOOK_1703123456791_jkl789mno",
+                        userId: userId,
+                        stylistId: {
+                            _id: "507f191e810c19729de860ec",
+                            stylistName: "Emma's Wardrobe Consulting",
+                            stylistImage: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400",
+                            stylistBio: "Expert in wardrobe optimization and sustainable fashion",
+                            stylistCity: "Bangalore",
+                            stylistState: "Karnataka",
+                            stylistPhone: "+1234567892",
+                            stylistEmail: "emma.stylist@example.com"
+                        },
+                        bookingType: "makeover",
+                        bookingTitle: "Special Event Makeover",
+                        bookingDescription: "Complete makeover for upcoming special event",
+                        scheduledDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days from now
+                        scheduledTime: "16:00",
+                        duration: 90,
+                        timezone: "Asia/Kolkata",
+                        status: "pending",
+                        paymentStatus: "pending",
+                        paymentAmount: 3500,
+                        paymentCurrency: "INR",
+                        paymentMethod: "razorpay",
+                        videoCallStatus: "not_started",
+                        isRescheduled: false,
+                        isCancelled: false,
+                        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+                        updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+                    }
+                ];
+
+                // Limit dummy data
+                const limitedDummySessions = dummySessions.slice(0, parseInt(limit));
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Upcoming sessions retrieved successfully (dummy data - no actual bookings found)",
+                    data: {
+                        upcomingSessions: limitedDummySessions,
+                        totalUpcoming: limitedDummySessions.length,
+                        isDummyData: true
+                    }
+                });
+            }
+
+            // Format sessions with additional calculated fields
+            const formattedSessions = limitedSessions.map(booking => {
+                const scheduledDate = new Date(booking.scheduledDate);
+                const [hours, minutes] = booking.scheduledTime.split(':');
+                scheduledDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                
+                const now = new Date();
+                const hoursUntilBooking = Math.floor((scheduledDate - now) / (1000 * 60 * 60));
+                const daysUntilBooking = Math.floor(hoursUntilBooking / 24);
+
+                return {
+                    ...booking.toObject(),
+                    scheduledDateTime: scheduledDate,
+                    hoursUntilBooking: hoursUntilBooking,
+                    daysUntilBooking: daysUntilBooking,
+                    isUpcoming: true,
+                    canBeCancelled: booking.status === 'confirmed' && 
+                                   booking.paymentStatus === 'completed' && 
+                                   !booking.isCancelled && 
+                                   hoursUntilBooking > 2,
+                    canBeRescheduled: booking.status === 'confirmed' && 
+                                     booking.paymentStatus === 'completed' && 
+                                     !booking.isCancelled && 
+                                     !booking.isRescheduled && 
+                                     hoursUntilBooking > 24
+                };
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Upcoming sessions retrieved successfully",
+                data: {
+                    upcomingSessions: formattedSessions,
+                    totalUpcoming: upcomingSessions.length,
+                    isDummyData: false
+                }
+            });
+
+        } catch (error) {
+            console.error("Get upcoming sessions error:", error);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to get upcoming sessions",
+                error: error.message
+            });
+        }
+    }
 }
 
 module.exports = StylistBookingController;

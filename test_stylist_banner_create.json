@@ -1,0 +1,27 @@
+{
+  "name": "Top Stylists Home Banner",
+  "title": "Find Your Perfect Stylist",
+  "subtitle": "Expert Personal Styling Services",
+  "description": "Discover our top-rated stylists and book your personalized styling session today",
+  "platform": "both",
+  "position": "stylist_home",
+  "customPosition": "",
+  "actionType": "stylist_category",
+  "actionValue": "507f1f77bcf86cd799439012",
+  "actionUrl": "",
+  "linkedStylist": null,
+  "linkedStylistCategory": "507f1f77bcf86cd799439012",
+  "displayOrder": 1,
+  "isActive": true,
+  "startDate": "2024-01-01T00:00:00.000Z",
+  "endDate": "2024-12-31T23:59:59.000Z",
+  "buttonText": "Explore Stylists",
+  "buttonColor": "#000000",
+  "textColor": "#FFFFFF",
+  "tags": ["stylist", "home", "featured", "top-rated"],
+  "webDesktopUrl": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1920",
+  "webTabletUrl": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1024",
+  "mobileUrl": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=768",
+  "imageUrl": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1920"
+}
+

@@ -36,6 +36,12 @@ router.get(
     stylistBookingController.getUserBookings
 );
 
+router.get(
+    "/upcoming-sessions",
+    authMiddleware,
+    stylistBookingController.getUpcomingSessions
+);
+
 router.post(
     "/start-video-call/:bookingId",
     authMiddleware,

@@ -58,6 +58,7 @@ This comprehensive booking system provides a complete solution for stylist booki
 - `POST /create` - Create new booking
 - `POST /payment/initiate/:bookingId` - Initiate payment
 - `GET /user-bookings` - Get user's bookings
+- `GET /upcoming-sessions` - Get user's upcoming sessions (returns dummy data if no bookings exist)
 - `POST /start-video-call/:bookingId` - Start video call
 - `POST /end-video-call/:bookingId` - End video call
 - `POST /reschedule/:bookingId` - Reschedule booking
