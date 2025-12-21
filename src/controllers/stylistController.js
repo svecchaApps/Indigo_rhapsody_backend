@@ -169,10 +169,108 @@ exports.getStylistProfile = async (req, res) => {
             .populate('userId', 'displayName email phoneNumber role profilePicture')
             .populate('stylistCategories', 'name description image icon');
 
+        // If no profile found, return dummy data
         if (!stylistProfile) {
-            return res.status(404).json({
-                success: false,
-                message: "Stylist profile not found"
+            const dummyProfile = {
+                _id: "507f1f77bcf86cd799439011",
+                userId: {
+                    _id: userId,
+                    displayName: "Sarah Johnson",
+                    email: "sarah.johnson@example.com",
+                    phoneNumber: "+1234567890",
+                    role: "Stylist",
+                    profilePicture: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400"
+                },
+                stylistName: "Sarah's Fashion Studio",
+                stylistEmail: "sarah.stylist@example.com",
+                stylistPhone: "+1234567890",
+                stylistAddress: "123 Fashion Street, Suite 4B",
+                stylistCity: "Mumbai",
+                stylistState: "Maharashtra",
+                stylistPincode: "400001",
+                stylistCountry: "India",
+                stylistImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400",
+                stylistBio: "Professional stylist with 8+ years of experience in fashion and personal styling. Specializing in wardrobe consulting, color analysis, and personal image transformation. I help clients discover their unique style and build confidence through fashion.",
+                stylistPortfolio: [
+                    "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800",
+                    "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800",
+                    "https://images.unsplash.com/photo-1445205170230-053b83016050?w=800",
+                    "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800",
+                    "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800"
+                ],
+                stylistExperience: "8+ years in fashion styling, worked with celebrities, fashion brands, and helped over 500 clients transform their personal style. Former stylist at Vogue India and Elle Magazine.",
+                stylistEducation: "Fashion Design Degree from National Institute of Fashion Technology (NIFT), Mumbai. Certified Personal Stylist from Style Academy, London.",
+                stylistSkills: [
+                    "Personal Styling",
+                    "Wardrobe Consulting",
+                    "Color Analysis",
+                    "Body Type Analysis",
+                    "Event Styling",
+                    "Celebrity Styling",
+                    "Fashion Photography Styling",
+                    "Sustainable Fashion Consulting"
+                ],
+                stylistCategories: [
+                    {
+                        _id: "507f191e810c19729de860ea",
+                        name: "Personal Styling",
+                        description: "One-on-one personal styling services",
+                        image: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400",
+                        icon: "👗"
+                    },
+                    {
+                        _id: "507f191e810c19729de860eb",
+                        name: "Wardrobe Consulting",
+                        description: "Professional wardrobe analysis and optimization",
+                        image: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400",
+                        icon: "👔"
+                    }
+                ],
+                stylistAvailability: "Monday-Friday: 9:00 AM - 6:00 PM, Saturday: 10:00 AM - 4:00 PM, Sunday: Closed",
+                stylistPrice: 2000,
+                stylistRating: 4.8,
+                stylistReviews: [
+                    "Sarah transformed my entire wardrobe! Highly recommend.",
+                    "Professional, friendly, and has an amazing eye for style.",
+                    "Best stylist I've ever worked with. Worth every penny!"
+                ],
+                applicationStatus: "approved",
+                isApproved: true,
+                approvalStatus: "approved",
+                bookingSettings: {
+                    isAvailableForBooking: true,
+                    minAdvanceBooking: 2,
+                    maxAdvanceBooking: 30,
+                    slotDuration: 60,
+                    maxBookingsPerDay: 8,
+                    bufferTime: 15,
+                    cancellationPolicy: "moderate",
+                    reschedulingPolicy: "flexible"
+                },
+                bookingStats: {
+                    totalBookings: 127,
+                    completedBookings: 115,
+                    cancelledBookings: 12,
+                    averageRating: 4.8,
+                    totalEarnings: 230000,
+                    lastBookingDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) // 2 days ago
+                },
+                videoCallSettings: {
+                    isVideoCallEnabled: true,
+                    preferredVideoQuality: "high",
+                    maxCallDuration: 120
+                },
+                createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // 1 year ago
+                updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) // 2 days ago
+            };
+
+            return res.status(200).json({
+                success: true,
+                message: "Stylist profile retrieved successfully (dummy data - no actual profile found)",
+                data: {
+                    stylistProfile: dummyProfile,
+                    isDummyData: true
+                }
             });
         }
 
@@ -180,7 +278,8 @@ exports.getStylistProfile = async (req, res) => {
             success: true,
             message: "Stylist profile retrieved successfully",
             data: {
-                stylistProfile
+                stylistProfile,
+                isDummyData: false
             }
         });
 
