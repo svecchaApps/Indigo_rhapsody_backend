@@ -1148,12 +1148,322 @@ exports.getTopStylists = async (req, res) => {
         // Limit results
         const topStylists = rankedStylists.slice(0, parseInt(limit));
 
+        // If no data found, return dummy data for testing/development
+        if (topStylists.length === 0) {
+            const dummyData = [
+                {
+                    rank: 1,
+                    stylistProfile: {
+                        _id: "507f1f77bcf86cd799439011",
+                        userId: {
+                            _id: "507f191e810c19729de860ea",
+                            displayName: "Sarah Johnson",
+                            email: "sarah.johnson@example.com",
+                            phoneNumber: "+1234567890",
+                            profilePicture: "https://example.com/profile1.jpg"
+                        },
+                        stylistName: "Sarah's Fashion Studio",
+                        stylistEmail: "sarah.stylist@example.com",
+                        stylistPhone: "+1234567890",
+                        stylistAddress: "123 Fashion Street",
+                        stylistCity: "Mumbai",
+                        stylistState: "Maharashtra",
+                        stylistPincode: "400001",
+                        stylistCountry: "India",
+                        stylistImage: "https://example.com/stylist1.jpg",
+                        stylistBio: "Professional stylist with 8+ years of experience in personal styling and wardrobe consulting",
+                        stylistPortfolio: [
+                            "https://example.com/portfolio1.jpg",
+                            "https://example.com/portfolio2.jpg",
+                            "https://example.com/portfolio3.jpg"
+                        ],
+                        stylistExperience: "8+ years in fashion styling",
+                        stylistEducation: "Fashion Design Degree from FIT",
+                        stylistSkills: ["Personal Styling", "Wardrobe Consulting", "Color Analysis"],
+                        stylistCategories: [
+                            {
+                                _id: "507f1f77bcf86cd799439012",
+                                name: "Personal Styling",
+                                description: "One-on-one personal styling services",
+                                image: "https://example.com/category1.jpg",
+                                icon: "https://example.com/icon1.svg"
+                            }
+                        ],
+                        stylistAvailability: "Monday-Friday: 9AM-6PM, Saturday: 10AM-4PM",
+                        stylistPrice: 3500,
+                        stylistRating: 4.8,
+                        isApproved: true,
+                        approvalStatus: "approved"
+                    },
+                    stats: {
+                        completedBookings: 150,
+                        totalBookings: 180,
+                        rating: 4.8,
+                        ratingCount: 120
+                    },
+                    scores: {
+                        bookingScore: 50.0,
+                        ratingScore: 48.0,
+                        combinedScore: 98.0
+                    }
+                },
+                {
+                    rank: 2,
+                    stylistProfile: {
+                        _id: "507f1f77bcf86cd799439012",
+                        userId: {
+                            _id: "507f191e810c19729de860eb",
+                            displayName: "Michael Chen",
+                            email: "michael.chen@example.com",
+                            phoneNumber: "+1234567891",
+                            profilePicture: "https://example.com/profile2.jpg"
+                        },
+                        stylistName: "Michael's Style Lab",
+                        stylistEmail: "michael.stylist@example.com",
+                        stylistPhone: "+1234567891",
+                        stylistAddress: "456 Style Avenue",
+                        stylistCity: "Mumbai",
+                        stylistState: "Maharashtra",
+                        stylistPincode: "400002",
+                        stylistCountry: "India",
+                        stylistImage: "https://example.com/stylist2.jpg",
+                        stylistBio: "Award-winning stylist specializing in contemporary fashion and trend forecasting",
+                        stylistPortfolio: [
+                            "https://example.com/portfolio4.jpg",
+                            "https://example.com/portfolio5.jpg"
+                        ],
+                        stylistExperience: "6+ years in fashion styling",
+                        stylistEducation: "Fashion Marketing Degree",
+                        stylistSkills: ["Trend Forecasting", "Event Styling", "Celebrity Styling"],
+                        stylistCategories: [
+                            {
+                                _id: "507f1f77bcf86cd799439013",
+                                name: "Event Styling",
+                                description: "Professional event styling services",
+                                image: "https://example.com/category2.jpg",
+                                icon: "https://example.com/icon2.svg"
+                            }
+                        ],
+                        stylistAvailability: "Monday-Saturday: 10AM-7PM",
+                        stylistPrice: 4000,
+                        stylistRating: 4.7,
+                        isApproved: true,
+                        approvalStatus: "approved"
+                    },
+                    stats: {
+                        completedBookings: 120,
+                        totalBookings: 150,
+                        rating: 4.7,
+                        ratingCount: 95
+                    },
+                    scores: {
+                        bookingScore: 40.0,
+                        ratingScore: 47.0,
+                        combinedScore: 87.0
+                    }
+                },
+                {
+                    rank: 3,
+                    stylistProfile: {
+                        _id: "507f1f77bcf86cd799439013",
+                        userId: {
+                            _id: "507f191e810c19729de860ec",
+                            displayName: "Emma Williams",
+                            email: "emma.williams@example.com",
+                            phoneNumber: "+1234567892",
+                            profilePicture: "https://example.com/profile3.jpg"
+                        },
+                        stylistName: "Emma's Wardrobe Consulting",
+                        stylistEmail: "emma.stylist@example.com",
+                        stylistPhone: "+1234567892",
+                        stylistAddress: "789 Fashion Lane",
+                        stylistCity: "Delhi",
+                        stylistState: "Delhi",
+                        stylistPincode: "110001",
+                        stylistCountry: "India",
+                        stylistImage: "https://example.com/stylist3.jpg",
+                        stylistBio: "Expert in wardrobe optimization and sustainable fashion styling",
+                        stylistPortfolio: [
+                            "https://example.com/portfolio6.jpg",
+                            "https://example.com/portfolio7.jpg",
+                            "https://example.com/portfolio8.jpg"
+                        ],
+                        stylistExperience: "5+ years in fashion styling",
+                        stylistEducation: "Textile Design Degree",
+                        stylistSkills: ["Wardrobe Consulting", "Sustainable Fashion", "Body Type Analysis"],
+                        stylistCategories: [
+                            {
+                                _id: "507f1f77bcf86cd799439014",
+                                name: "Wardrobe Consulting",
+                                description: "Professional wardrobe consultation services",
+                                image: "https://example.com/category3.jpg",
+                                icon: "https://example.com/icon3.svg"
+                            }
+                        ],
+                        stylistAvailability: "Tuesday-Saturday: 11AM-6PM",
+                        stylistPrice: 3000,
+                        stylistRating: 4.6,
+                        isApproved: true,
+                        approvalStatus: "approved"
+                    },
+                    stats: {
+                        completedBookings: 95,
+                        totalBookings: 120,
+                        rating: 4.6,
+                        ratingCount: 75
+                    },
+                    scores: {
+                        bookingScore: 31.67,
+                        ratingScore: 46.0,
+                        combinedScore: 77.67
+                    }
+                },
+                {
+                    rank: 4,
+                    stylistProfile: {
+                        _id: "507f1f77bcf86cd799439014",
+                        userId: {
+                            _id: "507f191e810c19729de860ed",
+                            displayName: "David Kumar",
+                            email: "david.kumar@example.com",
+                            phoneNumber: "+1234567893",
+                            profilePicture: "https://example.com/profile4.jpg"
+                        },
+                        stylistName: "David's Style House",
+                        stylistEmail: "david.stylist@example.com",
+                        stylistPhone: "+1234567893",
+                        stylistAddress: "321 Style Boulevard",
+                        stylistCity: "Bangalore",
+                        stylistState: "Karnataka",
+                        stylistPincode: "560001",
+                        stylistCountry: "India",
+                        stylistImage: "https://example.com/stylist4.jpg",
+                        stylistBio: "Specialized in men's fashion and corporate styling",
+                        stylistPortfolio: [
+                            "https://example.com/portfolio9.jpg",
+                            "https://example.com/portfolio10.jpg"
+                        ],
+                        stylistExperience: "7+ years in fashion styling",
+                        stylistEducation: "Fashion Design and Business Degree",
+                        stylistSkills: ["Men's Fashion", "Corporate Styling", "Grooming"],
+                        stylistCategories: [
+                            {
+                                _id: "507f1f77bcf86cd799439015",
+                                name: "Men's Fashion",
+                                description: "Specialized men's fashion styling",
+                                image: "https://example.com/category4.jpg",
+                                icon: "https://example.com/icon4.svg"
+                            }
+                        ],
+                        stylistAvailability: "Monday-Friday: 9AM-5PM",
+                        stylistPrice: 3500,
+                        stylistRating: 4.5,
+                        isApproved: true,
+                        approvalStatus: "approved"
+                    },
+                    stats: {
+                        completedBookings: 80,
+                        totalBookings: 100,
+                        rating: 4.5,
+                        ratingCount: 60
+                    },
+                    scores: {
+                        bookingScore: 26.67,
+                        ratingScore: 45.0,
+                        combinedScore: 71.67
+                    }
+                },
+                {
+                    rank: 5,
+                    stylistProfile: {
+                        _id: "507f1f77bcf86cd799439015",
+                        userId: {
+                            _id: "507f191e810c19729de860ee",
+                            displayName: "Priya Sharma",
+                            email: "priya.sharma@example.com",
+                            phoneNumber: "+1234567894",
+                            profilePicture: "https://example.com/profile5.jpg"
+                        },
+                        stylistName: "Priya's Fashion Boutique",
+                        stylistEmail: "priya.stylist@example.com",
+                        stylistPhone: "+1234567894",
+                        stylistAddress: "654 Fashion Plaza",
+                        stylistCity: "Mumbai",
+                        stylistState: "Maharashtra",
+                        stylistPincode: "400003",
+                        stylistCountry: "India",
+                        stylistImage: "https://example.com/stylist5.jpg",
+                        stylistBio: "Expert in traditional and contemporary Indian fashion fusion",
+                        stylistPortfolio: [
+                            "https://example.com/portfolio11.jpg",
+                            "https://example.com/portfolio12.jpg",
+                            "https://example.com/portfolio13.jpg"
+                        ],
+                        stylistExperience: "9+ years in fashion styling",
+                        stylistEducation: "Fashion Design and Indian Textiles Degree",
+                        stylistSkills: ["Indian Fashion", "Bridal Styling", "Traditional Wear"],
+                        stylistCategories: [
+                            {
+                                _id: "507f1f77bcf86cd799439016",
+                                name: "Bridal Styling",
+                                description: "Specialized bridal styling services",
+                                image: "https://example.com/category5.jpg",
+                                icon: "https://example.com/icon5.svg"
+                            }
+                        ],
+                        stylistAvailability: "Monday-Sunday: 10AM-8PM",
+                        stylistPrice: 5000,
+                        stylistRating: 4.9,
+                        isApproved: true,
+                        approvalStatus: "approved"
+                    },
+                    stats: {
+                        completedBookings: 200,
+                        totalBookings: 220,
+                        rating: 4.9,
+                        ratingCount: 180
+                    },
+                    scores: {
+                        bookingScore: 50.0,
+                        ratingScore: 49.0,
+                        combinedScore: 99.0
+                    }
+                }
+            ];
+
+            // Limit dummy data to requested limit
+            const limitedDummyData = dummyData.slice(0, parseInt(limit));
+
+            return res.status(200).json({
+                success: true,
+                message: "Top stylists retrieved successfully (dummy data - no actual data found)",
+                data: {
+                    topStylists: limitedDummyData,
+                    totalFound: limitedDummyData.length,
+                    isDummyData: true,
+                    algorithm: {
+                        description: "Combined scoring algorithm based on bookings and ratings",
+                        bookingWeight: "50% (0-50 points)",
+                        ratingWeight: "50% (0-50 points)",
+                        maxScore: 100,
+                        factors: [
+                            "Completed bookings count",
+                            "Stylist rating (0-5 scale)",
+                            "Only approved stylists",
+                            "Minimum booking and rating filters applied"
+                        ]
+                    }
+                }
+            });
+        }
+
         return res.status(200).json({
             success: true,
             message: "Top stylists retrieved successfully",
             data: {
                 topStylists,
                 totalFound: rankedStylists.length,
+                isDummyData: false,
                 algorithm: {
                     description: "Combined scoring algorithm based on bookings and ratings",
                     bookingWeight: "50% (0-50 points)",
