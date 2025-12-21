@@ -927,7 +927,29 @@ class StylistBookingController {
      */
     static async getUpcomingSessions(req, res) {
         try {
-            const userId = req.user._id;
+            // Get userId from request body or query parameters
+            const userId = req.body.userId || req.query.userId;
+            
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "User ID is required. Please provide userId in request body or query parameters."
+                });
+            }
+            
+            // Convert userId to ObjectId if it's a string
+            let userIdObjectId;
+            try {
+                userIdObjectId = mongoose.Types.ObjectId.isValid(userId) 
+                    ? new mongoose.Types.ObjectId(userId) 
+                    : userId;
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid user ID format"
+                });
+            }
+            
             const { limit = 10 } = req.query;
 
             const now = new Date();
@@ -935,7 +957,7 @@ class StylistBookingController {
             // Build query for upcoming sessions
             // Get bookings that are scheduled in the future and not cancelled/completed
             const query = {
-                userId: userId,
+                userId: userIdObjectId,
                 status: { $in: ['pending', 'confirmed', 'in_progress'] },
                 isCancelled: false
             };

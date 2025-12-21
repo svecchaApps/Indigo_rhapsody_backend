@@ -9,8 +9,8 @@ The Upcoming Sessions API provides users with a dedicated endpoint to view their
 ```
 
 ## Authentication
-- **Required**: Valid JWT token with user authentication
-- The user ID is automatically extracted from the JWT token
+- **Not Required**: This is a public endpoint
+- User ID must be provided in the request body or query parameters
 
 ## Endpoint
 
@@ -18,7 +18,7 @@ The Upcoming Sessions API provides users with a dedicated endpoint to view their
 **GET** `/upcoming-sessions`
 
 #### Description
-Retrieves all upcoming booking sessions for the authenticated user. Only returns bookings that:
+Retrieves all upcoming booking sessions for a specific user. Only returns bookings that:
 - Are scheduled in the future (scheduled date/time is after current time)
 - Have status of `pending`, `confirmed`, or `in_progress`
 - Are not cancelled
@@ -28,23 +28,49 @@ If no upcoming sessions are found, the endpoint returns realistic dummy data to 
 #### Query Parameters
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `userId` | String | Yes | - | User ID to retrieve upcoming sessions for |
 | `limit` | Integer | No | 10 | Maximum number of sessions to return |
+
+#### Request Body (Alternative)
+You can also send `userId` in the request body:
+```json
+{
+  "userId": "507f191e810c19729de860ea"
+}
+```
 
 #### Request Example
 ```bash
-# Using cURL
+# Using cURL with query parameter
+curl -X GET "http://localhost:5000/api/stylist-booking/upcoming-sessions?userId=507f191e810c19729de860ea&limit=5" \
+  -H "Content-Type: application/json"
+
+# Using cURL with POST body
 curl -X GET "http://localhost:5000/api/stylist-booking/upcoming-sessions?limit=5" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+  -H "Content-Type: application/json" \
+  -d '{"userId": "507f191e810c19729de860ea"}'
 ```
 
 ```javascript
-// Using fetch
+// Using fetch with query parameter
+const response = await fetch('http://localhost:5000/api/stylist-booking/upcoming-sessions?userId=507f191e810c19729de860ea&limit=5', {
+  method: 'GET',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+const data = await response.json();
+
+// Using fetch with POST body
 const response = await fetch('http://localhost:5000/api/stylist-booking/upcoming-sessions?limit=5', {
   method: 'GET',
   headers: {
-    'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
-  }
+  },
+  body: JSON.stringify({
+    userId: '507f191e810c19729de860ea'
+  })
 });
 
 const data = await response.json();
@@ -296,12 +322,11 @@ The dummy data includes a flag `isDummyData: true` in the response to help the f
 
 ```dart
 // Flutter example
-Future<void> fetchUpcomingSessions() async {
+Future<void> fetchUpcomingSessions(String userId) async {
   try {
     final response = await http.get(
-      Uri.parse('$baseUrl/api/stylist-booking/upcoming-sessions?limit=10'),
+      Uri.parse('$baseUrl/api/stylist-booking/upcoming-sessions?userId=$userId&limit=10'),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
     );
@@ -330,14 +355,13 @@ Future<void> fetchUpcomingSessions() async {
 
 ```javascript
 // React example
-const fetchUpcomingSessions = async () => {
+const fetchUpcomingSessions = async (userId) => {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/stylist-booking/upcoming-sessions?limit=10`,
+      `${API_BASE_URL}/api/stylist-booking/upcoming-sessions?userId=${userId}&limit=10`,
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       }
@@ -377,14 +401,22 @@ const fetchUpcomingSessions = async () => {
 
 ## Error Handling
 
-### 401 Unauthorized
+### 400 Bad Request
 ```json
 {
   "success": false,
-  "message": "Unauthorized - authentication required"
+  "message": "User ID is required. Please provide userId in request body or query parameters."
 }
 ```
-**Solution**: Ensure a valid JWT token is included in the Authorization header.
+**Solution**: Ensure `userId` is provided in the request body or query parameters.
+
+```json
+{
+  "success": false,
+  "message": "Invalid user ID format"
+}
+```
+**Solution**: Ensure the `userId` is a valid MongoDB ObjectId format.
 
 ### 500 Internal Server Error
 ```json
@@ -400,19 +432,19 @@ const fetchUpcomingSessions = async () => {
 
 ### Using cURL
 ```bash
-# Get upcoming sessions
-curl -X GET "http://localhost:5000/api/stylist-booking/upcoming-sessions?limit=5" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+# Get upcoming sessions with userId in query
+curl -X GET "http://localhost:5000/api/stylist-booking/upcoming-sessions?userId=507f191e810c19729de860ea&limit=5" \
   -H "Content-Type: application/json"
 ```
 
 ### Using Postman
 1. Set method to `GET`
-2. URL: `http://localhost:5000/api/stylist-booking/upcoming-sessions?limit=5`
+2. URL: `http://localhost:5000/api/stylist-booking/upcoming-sessions?userId=507f191e810c19729de860ea&limit=5`
 3. Headers:
-   - `Authorization`: `Bearer YOUR_JWT_TOKEN`
    - `Content-Type`: `application/json`
 4. Send request
+
+**Note**: You can also send `userId` in the request body if using POST method.
 
 ## Notes
 

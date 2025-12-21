@@ -36,9 +36,9 @@ router.get(
     stylistBookingController.getUserBookings
 );
 
+// Public route - accepts userId as parameter
 router.get(
     "/upcoming-sessions",
-    authMiddleware,
     stylistBookingController.getUpcomingSessions
 );
 
