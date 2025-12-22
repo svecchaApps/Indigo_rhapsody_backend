@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const StylistProfile = require("../models/stylistProfile");
 const StylistCategory = require("../models/stylistCategoryModel");
 const StylistBooking = require("../models/stylistBooking");
+const StylistAvailability = require("../models/stylistAvailability");
 const User = require("../models/userModel");
 const {
     createNotification,
@@ -1817,6 +1818,253 @@ exports.markAsTopStylist = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error updating top stylist status",
+            error: error.message
+        });
+    }
+};
+
+// Create or update stylist availability
+exports.createOrUpdateAvailability = async (req, res) => {
+    try {
+        // Get stylistId from params, body, or user (if authenticated)
+        const { stylistId } = req.params;
+        const stylistIdFromBody = req.body.stylistId;
+        const userIdFromAuth = req.user ? req.user._id : null;
+
+        let targetStylistId = null;
+        let targetStylistProfile = null;
+
+        // Priority: params > body > authenticated user
+        if (stylistId) {
+            if (!mongoose.Types.ObjectId.isValid(stylistId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid stylist ID format"
+                });
+            }
+            targetStylistProfile = await StylistProfile.findById(stylistId);
+            if (targetStylistProfile) {
+                targetStylistId = targetStylistProfile._id;
+            }
+        } else if (stylistIdFromBody) {
+            if (!mongoose.Types.ObjectId.isValid(stylistIdFromBody)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid stylist ID format"
+                });
+            }
+            targetStylistProfile = await StylistProfile.findById(stylistIdFromBody);
+            if (targetStylistProfile) {
+                targetStylistId = targetStylistProfile._id;
+            }
+        } else if (userIdFromAuth) {
+            // Find stylist profile by userId
+            targetStylistProfile = await StylistProfile.findOne({ userId: userIdFromAuth });
+            if (targetStylistProfile) {
+                targetStylistId = targetStylistProfile._id;
+            }
+        }
+
+        if (!targetStylistId || !targetStylistProfile) {
+            return res.status(404).json({
+                success: false,
+                message: "Stylist profile not found"
+            });
+        }
+
+        const {
+            weeklySchedule,
+            dateOverrides = [],
+            bookingPreferences = {},
+            timezone = 'Asia/Kolkata',
+            isActive = true
+        } = req.body;
+
+        // Validate weeklySchedule if provided
+        if (weeklySchedule) {
+            const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+            for (const day of validDays) {
+                if (weeklySchedule[day]) {
+                    const daySchedule = weeklySchedule[day];
+                    if (daySchedule.startTime && daySchedule.endTime) {
+                        // Validate time format (HH:MM)
+                        const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+                        if (!timeRegex.test(daySchedule.startTime) || !timeRegex.test(daySchedule.endTime)) {
+                            return res.status(400).json({
+                                success: false,
+                                message: `Invalid time format for ${day}. Use HH:MM format (24-hour)`
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find or create availability record
+        let availability = await StylistAvailability.findOne({ stylistId: targetStylistId });
+
+        if (!availability) {
+            availability = new StylistAvailability({
+                stylistId: targetStylistId
+            });
+        }
+
+        // Update availability settings
+        if (weeklySchedule) {
+            availability.weeklySchedule = weeklySchedule;
+        }
+        if (dateOverrides && Array.isArray(dateOverrides)) {
+            availability.dateOverrides = dateOverrides.map(override => ({
+                ...override,
+                date: new Date(override.date)
+            }));
+        }
+        if (bookingPreferences && Object.keys(bookingPreferences).length > 0) {
+            availability.bookingPreferences = {
+                ...availability.bookingPreferences,
+                ...bookingPreferences
+            };
+        }
+        if (timezone) {
+            availability.timezone = timezone;
+        }
+        availability.isActive = isActive;
+        availability.updatedAt = new Date();
+
+        await availability.save();
+
+        // Populate stylist information
+        await availability.populate({
+            path: 'stylistId',
+            select: 'stylistName stylistImage stylistBio stylistCity stylistState stylistPhone stylistEmail stylistPrice',
+            populate: {
+                path: 'userId',
+                select: 'displayName email phoneNumber profilePicture'
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Availability created/updated successfully",
+            data: {
+                availability,
+                stylistInfo: {
+                    stylistId: targetStylistProfile._id,
+                    stylistName: targetStylistProfile.stylistName,
+                    stylistImage: targetStylistProfile.stylistImage,
+                    stylistCity: targetStylistProfile.stylistCity,
+                    stylistState: targetStylistProfile.stylistState
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error creating/updating availability:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error creating/updating availability",
+            error: error.message
+        });
+    }
+};
+
+// Get stylist availability with stylist information
+exports.getAvailabilityWithStylistInfo = async (req, res) => {
+    try {
+        // Get stylistId from params or query
+        const { stylistId } = req.params;
+        const stylistIdFromQuery = req.query.stylistId;
+        const userIdFromQuery = req.query.userId;
+
+        let targetStylistId = null;
+        let targetStylistProfile = null;
+
+        // Priority: params > query.stylistId > query.userId
+        if (stylistId) {
+            if (!mongoose.Types.ObjectId.isValid(stylistId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid stylist ID format"
+                });
+            }
+            targetStylistProfile = await StylistProfile.findById(stylistId);
+            if (targetStylistProfile) {
+                targetStylistId = targetStylistProfile._id;
+            }
+        } else if (stylistIdFromQuery) {
+            if (!mongoose.Types.ObjectId.isValid(stylistIdFromQuery)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid stylist ID format"
+                });
+            }
+            targetStylistProfile = await StylistProfile.findById(stylistIdFromQuery);
+            if (targetStylistProfile) {
+                targetStylistId = targetStylistProfile._id;
+            }
+        } else if (userIdFromQuery) {
+            if (!mongoose.Types.ObjectId.isValid(userIdFromQuery)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid user ID format"
+                });
+            }
+            targetStylistProfile = await StylistProfile.findOne({ userId: userIdFromQuery });
+            if (targetStylistProfile) {
+                targetStylistId = targetStylistProfile._id;
+            }
+        }
+
+        if (!targetStylistId || !targetStylistProfile) {
+            return res.status(404).json({
+                success: false,
+                message: "Stylist profile not found"
+            });
+        }
+
+        // Get availability
+        let availability = await StylistAvailability.findOne({ stylistId: targetStylistId })
+            .populate({
+                path: 'stylistId',
+                select: 'stylistName stylistImage stylistBio stylistCity stylistState stylistPhone stylistEmail stylistPrice stylistRating stylistAvailability',
+                populate: {
+                    path: 'userId',
+                    select: 'displayName email phoneNumber profilePicture'
+                }
+            });
+
+        // If no availability found, return stylist info with default availability structure
+        if (!availability) {
+            // Populate stylist profile
+            await targetStylistProfile.populate('userId', 'displayName email phoneNumber profilePicture');
+            await targetStylistProfile.populate('stylistCategories', 'name description image icon');
+
+            return res.status(200).json({
+                success: true,
+                message: "Stylist information retrieved (no availability set yet)",
+                data: {
+                    stylistProfile: targetStylistProfile,
+                    availability: null,
+                    hasAvailability: false
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Availability with stylist information retrieved successfully",
+            data: {
+                availability,
+                stylistProfile: availability.stylistId,
+                hasAvailability: true
+            }
+        });
+
+    } catch (error) {
+        console.error("Error getting availability with stylist info:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error retrieving availability",
             error: error.message
         });
     }

@@ -114,4 +114,25 @@ router.post(
     stylistController.markAsTopStylist
 );
 
+// Stylist availability routes
+router.post(
+    "/availability",
+    stylistController.createOrUpdateAvailability
+);
+
+router.post(
+    "/availability/:stylistId",
+    stylistController.createOrUpdateAvailability
+);
+
+router.get(
+    "/availability/:stylistId",
+    stylistController.getAvailabilityWithStylistInfo
+);
+
+router.get(
+    "/availability",
+    stylistController.getAvailabilityWithStylistInfo
+);
+
 module.exports = router;
