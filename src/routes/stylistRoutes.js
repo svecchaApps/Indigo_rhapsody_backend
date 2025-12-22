@@ -102,4 +102,16 @@ router.post(
     stylistController.createStylistCategory
 );
 
+// Test endpoint: Create stylist profile (public, for testing)
+router.post(
+    "/test/create",
+    stylistController.createTestStylistProfile
+);
+
+// Mark/unmark stylist as top stylist (public, for testing)
+router.post(
+    "/test/mark-top/:stylistId",
+    stylistController.markAsTopStylist
+);
+
 module.exports = router;

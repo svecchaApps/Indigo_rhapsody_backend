@@ -102,6 +102,14 @@ const stylistProfileSchema = new mongoose.Schema({
         enum: ['pending', 'approved', 'rejected'],
         default: 'pending',
     },
+    isTopStylist: {
+        type: Boolean,
+        default: false,
+    },
+    isTopStylist: {
+        type: Boolean,
+        default: false,
+    },
     // Payment fields
     registrationFee: {
         type: Number,

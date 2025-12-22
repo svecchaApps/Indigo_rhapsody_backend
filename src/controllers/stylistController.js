@@ -1217,7 +1217,12 @@ exports.getTopStylists = async (req, res) => {
             const ratingScore = (item.rating / 5) * 50;
 
             // Combined Score (0-100 points)
-            const combinedScore = bookingScore + ratingScore;
+            let combinedScore = bookingScore + ratingScore;
+
+            // Boost score for top stylists (add 20 bonus points)
+            if (item.stylist.isTopStylist) {
+                combinedScore += 20;
+            }
 
             return {
                 stylistProfile: item.stylist,
@@ -1230,14 +1235,21 @@ exports.getTopStylists = async (req, res) => {
                 scores: {
                     bookingScore: Math.round(bookingScore * 100) / 100,
                     ratingScore: Math.round(ratingScore * 100) / 100,
-                    combinedScore: Math.round(combinedScore * 100) / 100
+                    combinedScore: Math.round(combinedScore * 100) / 100,
+                    isTopStylist: item.stylist.isTopStylist || false
                 },
                 rank: 0 // Will be set after sorting
             };
         });
 
-        // Sort by combined score (descending)
-        rankedStylists.sort((a, b) => b.scores.combinedScore - a.scores.combinedScore);
+        // Sort by isTopStylist first, then by combined score (descending)
+        rankedStylists.sort((a, b) => {
+            // Top stylists first
+            if (a.scores.isTopStylist && !b.scores.isTopStylist) return -1;
+            if (!a.scores.isTopStylist && b.scores.isTopStylist) return 1;
+            // Then by combined score
+            return b.scores.combinedScore - a.scores.combinedScore;
+        });
 
         // Assign ranks
         rankedStylists.forEach((item, index) => {
@@ -1583,6 +1595,228 @@ exports.getTopStylists = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Error retrieving top stylists",
+            error: error.message
+        });
+    }
+};
+
+// Test endpoint: Create stylist profile (public, for testing purposes)
+exports.createTestStylistProfile = async (req, res) => {
+    try {
+        const {
+            userId,
+            stylistName,
+            stylistEmail,
+            stylistPhone,
+            stylistAddress,
+            stylistCity,
+            stylistState,
+            stylistPincode,
+            stylistCountry,
+            stylistImage,
+            stylistBio,
+            stylistPortfolio,
+            stylistExperience,
+            stylistEducation,
+            stylistSkills,
+            stylistAvailability,
+            stylistPrice,
+            stylistCategories,
+            autoApprove = false,
+            isTopStylist = false,
+            bookingStats
+        } = req.body;
+
+        // Validate required fields
+        const requiredFields = [
+            'stylistName',
+            'stylistEmail',
+            'stylistPhone',
+            'stylistAddress',
+            'stylistCity',
+            'stylistState',
+            'stylistPincode',
+            'stylistCountry',
+            'stylistImage',
+            'stylistBio',
+            'stylistPortfolio',
+            'stylistExperience',
+            'stylistEducation',
+            'stylistSkills',
+            'stylistAvailability'
+        ];
+
+        for (const field of requiredFields) {
+            if (!req.body[field]) {
+                return res.status(400).json({
+                    success: false,
+                    message: `${field} is required`
+                });
+            }
+        }
+
+        // Validate userId if provided
+        let userObjectId = null;
+        if (userId) {
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid userId format"
+                });
+            }
+            userObjectId = new mongoose.Types.ObjectId(userId);
+            
+            // Check if user already has a stylist profile
+            const existingProfile = await StylistProfile.findOne({ userId: userObjectId });
+            if (existingProfile) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Stylist profile already exists for this user"
+                });
+            }
+        }
+
+        // Validate arrays
+        if (!Array.isArray(stylistPortfolio) || stylistPortfolio.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "stylistPortfolio must be a non-empty array"
+            });
+        }
+
+        if (!Array.isArray(stylistSkills) || stylistSkills.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "stylistSkills must be a non-empty array"
+            });
+        }
+
+        // Validate categories if provided
+        let categoryIds = [];
+        if (stylistCategories && Array.isArray(stylistCategories)) {
+            for (const catId of stylistCategories) {
+                if (mongoose.Types.ObjectId.isValid(catId)) {
+                    const category = await StylistCategory.findOne({ 
+                        _id: catId, 
+                        isActive: true 
+                    });
+                    if (category) {
+                        categoryIds.push(catId);
+                    }
+                }
+            }
+        }
+
+        // Create stylist profile
+        const stylistProfile = new StylistProfile({
+            userId: userObjectId,
+            stylistName,
+            stylistEmail,
+            stylistPhone,
+            stylistAddress,
+            stylistCity,
+            stylistState,
+            stylistPincode,
+            stylistCountry,
+            stylistImage,
+            stylistBio,
+            stylistPortfolio,
+            stylistExperience,
+            stylistEducation,
+            stylistSkills,
+            stylistCategories: categoryIds,
+            stylistAvailability,
+            stylistPrice: stylistPrice || 0,
+            stylistRating: bookingStats?.averageRating || 4.5,
+            stylistReviews: [],
+            isApproved: autoApprove,
+            approvalStatus: autoApprove ? "approved" : "pending",
+            applicationStatus: autoApprove ? "approved" : "draft",
+            isTopStylist: isTopStylist,
+            bookingStats: bookingStats || {
+                totalBookings: 0,
+                completedBookings: 0,
+                cancelledBookings: 0,
+                averageRating: 0,
+                totalEarnings: 0
+            },
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        await stylistProfile.save();
+
+        // Populate user details and categories
+        if (userObjectId) {
+            await stylistProfile.populate('userId', 'displayName email phoneNumber role');
+        }
+        await stylistProfile.populate('stylistCategories', 'name description image icon');
+
+        return res.status(201).json({
+            success: true,
+            message: "Test stylist profile created successfully",
+            data: {
+                stylistProfile,
+                isTestData: true
+            }
+        });
+
+    } catch (error) {
+        console.error("Error creating test stylist profile:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error creating test stylist profile",
+            error: error.message
+        });
+    }
+};
+
+// Mark/unmark stylist as top stylist
+exports.markAsTopStylist = async (req, res) => {
+    try {
+        const { stylistId } = req.params;
+        const { isTopStylist = true } = req.body;
+
+        // Validate ObjectId
+        if (!mongoose.Types.ObjectId.isValid(stylistId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid stylist ID format"
+            });
+        }
+
+        // Find stylist profile
+        const stylistProfile = await StylistProfile.findById(stylistId);
+
+        if (!stylistProfile) {
+            return res.status(404).json({
+                success: false,
+                message: "Stylist profile not found"
+            });
+        }
+
+        // Update isTopStylist status
+        stylistProfile.isTopStylist = isTopStylist;
+        stylistProfile.updatedAt = new Date();
+        await stylistProfile.save();
+
+        // Populate for response
+        await stylistProfile.populate('userId', 'displayName email phoneNumber role');
+        await stylistProfile.populate('stylistCategories', 'name description image icon');
+
+        return res.status(200).json({
+            success: true,
+            message: `Stylist ${isTopStylist ? 'marked as' : 'removed from'} top stylist successfully`,
+            data: {
+                stylistProfile
+            }
+        });
+
+    } catch (error) {
+        console.error("Error marking stylist as top:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error updating top stylist status",
             error: error.message
         });
     }
