@@ -109,8 +109,67 @@ The Stylist Profile API provides comprehensive functionality for managing stylis
 ### 11. Get Stylist Profile by User ID
 **GET** `/profile/:userId`
 - **Authentication**: None required
-- **Description**: Retrieves a specific stylist profile by user ID
-- **Response**: Stylist profile details
+- **Description**: Retrieves a specific stylist profile by user ID, including availability slots and booking data
+- **Response**: Stylist profile details with availability and bookings
+
+#### Response Structure
+```json
+{
+  "success": true,
+  "message": "Stylist profile retrieved successfully",
+  "data": {
+    "stylistProfile": {
+      // Full stylist profile object
+    },
+    "availability": {
+      "_id": "...",
+      "stylistId": "...",
+      "weeklySchedule": {
+        "monday": {
+          "isAvailable": true,
+          "startTime": "13:00",
+          "endTime": "18:00",
+          "slots": [
+            {
+              "startTime": "13:00",
+              "endTime": "13:30",
+              "duration": 30,
+              "isAvailable": true,
+              "maxBookings": 1
+            }
+          ],
+          "breaks": []
+        }
+        // ... other days
+      },
+      "bookingPreferences": { ... },
+      "isActive": true
+    },
+    "bookings": {
+      "upcoming": [
+        // Array of upcoming bookings (next 30 days)
+      ],
+      "recent": [
+        // Array of recent bookings (last 30 days)
+      ],
+      "stats": {
+        "totalBookings": 127,
+        "upcomingBookings": 5,
+        "completedBookings": 115,
+        "cancelledBookings": 12,
+        "averageRating": 4.8
+      }
+    },
+    "isDummyData": false
+  }
+}
+```
+
+#### Notes
+- **Availability**: Includes weekly schedule with slot-based time slots for each day
+- **Bookings**: Includes upcoming bookings (next 30 days) and recent bookings (last 30 days)
+- **Stats**: Provides booking statistics including total, upcoming, completed, cancelled bookings, and average rating
+- **Dummy Data**: If no profile is found, returns dummy data with sample availability slots and bookings
 
 ## Required Fields for Stylist Profile
 

@@ -172,6 +172,71 @@ exports.getStylistProfile = async (req, res) => {
 
         // If no profile found, return dummy data
         if (!stylistProfile) {
+            // Get dummy availability with slots
+            const dummyAvailability = {
+                _id: "507f1f77bcf86cd799439012",
+                stylistId: "507f1f77bcf86cd799439011",
+                weeklySchedule: {
+                    monday: {
+                        isAvailable: true,
+                        startTime: "13:00",
+                        endTime: "18:00",
+                        slots: [
+                            { startTime: "13:00", endTime: "13:30", duration: 30, isAvailable: true, maxBookings: 1 },
+                            { startTime: "13:30", endTime: "14:00", duration: 30, isAvailable: true, maxBookings: 1 },
+                            { startTime: "16:30", endTime: "17:00", duration: 30, isAvailable: true, maxBookings: 1 }
+                        ],
+                        breaks: []
+                    },
+                    tuesday: {
+                        isAvailable: true,
+                        startTime: "09:00",
+                        endTime: "18:00",
+                        slots: [],
+                        breaks: []
+                    }
+                },
+                bookingPreferences: {
+                    minAdvanceBooking: 2,
+                    maxAdvanceBooking: 30,
+                    slotDuration: 60,
+                    maxBookingsPerDay: 8,
+                    bufferTime: 15
+                },
+                isActive: true
+            };
+
+            // Get dummy booking data
+            const dummyBookings = {
+                upcoming: [
+                    {
+                        _id: "507f1f77bcf86cd799439013",
+                        bookingId: "BOOK_1703123456789_abc123def",
+                        scheduledDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+                        scheduledTime: "13:00",
+                        status: "confirmed",
+                        bookingTitle: "Personal Styling Consultation"
+                    }
+                ],
+                recent: [
+                    {
+                        _id: "507f1f77bcf86cd799439014",
+                        bookingId: "BOOK_1703123456790_def456ghi",
+                        scheduledDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+                        scheduledTime: "14:00",
+                        status: "completed",
+                        bookingTitle: "Wardrobe Makeover",
+                        userRating: 5
+                    }
+                ],
+                stats: {
+                    totalBookings: 127,
+                    upcomingBookings: 5,
+                    completedBookings: 115,
+                    cancelledBookings: 12,
+                    averageRating: 4.8
+                }
+            };
             const dummyProfile = {
                 _id: "507f1f77bcf86cd799439011",
                 userId: {
@@ -270,16 +335,98 @@ exports.getStylistProfile = async (req, res) => {
                 message: "Stylist profile retrieved successfully (dummy data - no actual profile found)",
                 data: {
                     stylistProfile: dummyProfile,
+                    availability: dummyAvailability,
+                    bookings: dummyBookings,
                     isDummyData: true
                 }
             });
         }
+
+        // Fetch availability data with slots
+        const availability = await StylistAvailability.findOne({ stylistId: stylistProfile._id });
+
+        // Fetch booking data
+        const now = new Date();
+        
+        // Get upcoming bookings (next 30 days)
+        const upcomingBookings = await StylistBooking.find({
+            stylistId: stylistProfile._id,
+            status: { $in: ['pending', 'confirmed', 'in_progress'] },
+            isCancelled: false,
+            scheduledDate: { $gte: now }
+        })
+        .populate('userId', 'displayName email phoneNumber profilePicture')
+        .sort({ scheduledDate: 1, scheduledTime: 1 })
+        .limit(10);
+
+        // Get recent bookings (last 30 days)
+        const recentBookings = await StylistBooking.find({
+            stylistId: stylistProfile._id,
+            status: { $in: ['completed', 'cancelled'] },
+            scheduledDate: { $lte: now }
+        })
+        .populate('userId', 'displayName email phoneNumber profilePicture')
+        .sort({ scheduledDate: -1, scheduledTime: -1 })
+        .limit(10);
+
+        // Get booking statistics
+        const totalBookings = await StylistBooking.countDocuments({ stylistId: stylistProfile._id });
+        const upcomingBookingsCount = await StylistBooking.countDocuments({
+            stylistId: stylistProfile._id,
+            status: { $in: ['pending', 'confirmed', 'in_progress'] },
+            isCancelled: false,
+            scheduledDate: { $gte: now }
+        });
+        const completedBookings = await StylistBooking.countDocuments({
+            stylistId: stylistProfile._id,
+            status: 'completed'
+        });
+        const cancelledBookings = await StylistBooking.countDocuments({
+            stylistId: stylistProfile._id,
+            status: 'cancelled'
+        });
+
+        // Get average rating from bookings
+        const ratingAggregation = await StylistBooking.aggregate([
+            {
+                $match: {
+                    stylistId: stylistProfile._id,
+                    status: 'completed',
+                    userRating: { $exists: true, $gt: 0 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    avgRating: { $avg: '$userRating' },
+                    ratingCount: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const averageRating = ratingAggregation.length > 0 && ratingAggregation[0].avgRating
+            ? Math.round(ratingAggregation[0].avgRating * 10) / 10
+            : stylistProfile.stylistRating || 0;
+
+        const bookingsData = {
+            upcoming: upcomingBookings,
+            recent: recentBookings,
+            stats: {
+                totalBookings,
+                upcomingBookings: upcomingBookingsCount,
+                completedBookings,
+                cancelledBookings,
+                averageRating
+            }
+        };
 
         return res.status(200).json({
             success: true,
             message: "Stylist profile retrieved successfully",
             data: {
                 stylistProfile,
+                availability: availability || null,
+                bookings: bookingsData,
                 isDummyData: false
             }
         });
