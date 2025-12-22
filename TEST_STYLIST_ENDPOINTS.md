@@ -19,7 +19,7 @@ Creates a stylist profile for testing purposes. This endpoint does not require a
 #### Request Body
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `userId` | String | No | User ID (MongoDB ObjectId). If not provided, profile will be created without user association |
+| `userId` | String | No | User ID (MongoDB ObjectId). If not provided, a new user will be automatically created |
 | `stylistName` | String | Yes | Professional name of the stylist |
 | `stylistEmail` | String | Yes | Professional email of the stylist |
 | `stylistPhone` | String | Yes | Professional phone number |
@@ -112,10 +112,14 @@ curl -X POST "http://localhost:5000/api/stylist/test/create" \
       },
       ...
     },
+    "userId": "507f191e810c19729de860ea",
+    "userCreated": true,
     "isTestData": true
   }
 }
 ```
+
+**Note**: If `userId` is not provided, a new user will be automatically created and the `userId` will be returned in the response with `userCreated: true`. This allows you to immediately use the `userId` to create availability schedules.
 
 ---
 

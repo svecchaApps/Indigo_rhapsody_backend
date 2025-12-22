@@ -1656,8 +1656,10 @@ exports.createTestStylistProfile = async (req, res) => {
             }
         }
 
-        // Validate userId if provided
+        // Handle userId - create user if not provided
         let userObjectId = null;
+        let createdUser = false;
+        
         if (userId) {
             if (!mongoose.Types.ObjectId.isValid(userId)) {
                 return res.status(400).json({
@@ -1667,6 +1669,15 @@ exports.createTestStylistProfile = async (req, res) => {
             }
             userObjectId = new mongoose.Types.ObjectId(userId);
             
+            // Check if user exists
+            const existingUser = await User.findById(userObjectId);
+            if (!existingUser) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found with provided userId"
+                });
+            }
+            
             // Check if user already has a stylist profile
             const existingProfile = await StylistProfile.findOne({ userId: userObjectId });
             if (existingProfile) {
@@ -1675,6 +1686,19 @@ exports.createTestStylistProfile = async (req, res) => {
                     message: "Stylist profile already exists for this user"
                 });
             }
+        } else {
+            // Create a new user for the stylist
+            const newUser = new User({
+                displayName: stylistName,
+                email: stylistEmail,
+                phoneNumber: stylistPhone,
+                role: "Stylist",
+                is_creator: false
+            });
+            
+            await newUser.save();
+            userObjectId = newUser._id;
+            createdUser = true;
         }
 
         // Validate arrays
@@ -1758,6 +1782,8 @@ exports.createTestStylistProfile = async (req, res) => {
             message: "Test stylist profile created successfully",
             data: {
                 stylistProfile,
+                userId: userObjectId,
+                userCreated: createdUser,
                 isTestData: true
             }
         });
@@ -1883,17 +1909,50 @@ exports.createOrUpdateAvailability = async (req, res) => {
         // Validate weeklySchedule if provided
         if (weeklySchedule) {
             const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+            const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+            
             for (const day of validDays) {
                 if (weeklySchedule[day]) {
                     const daySchedule = weeklySchedule[day];
+                    
+                    // Validate startTime and endTime if provided
                     if (daySchedule.startTime && daySchedule.endTime) {
-                        // Validate time format (HH:MM)
-                        const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
                         if (!timeRegex.test(daySchedule.startTime) || !timeRegex.test(daySchedule.endTime)) {
                             return res.status(400).json({
                                 success: false,
                                 message: `Invalid time format for ${day}. Use HH:MM format (24-hour)`
                             });
+                        }
+                    }
+                    
+                    // Validate slots if provided
+                    if (daySchedule.slots && Array.isArray(daySchedule.slots)) {
+                        for (let i = 0; i < daySchedule.slots.length; i++) {
+                            const slot = daySchedule.slots[i];
+                            if (!slot.startTime || !slot.endTime) {
+                                return res.status(400).json({
+                                    success: false,
+                                    message: `Slot ${i + 1} for ${day} must have startTime and endTime`
+                                });
+                            }
+                            if (!timeRegex.test(slot.startTime) || !timeRegex.test(slot.endTime)) {
+                                return res.status(400).json({
+                                    success: false,
+                                    message: `Invalid time format in slot ${i + 1} for ${day}. Use HH:MM format (24-hour)`
+                                });
+                            }
+                            // Validate that endTime is after startTime
+                            const [startHour, startMin] = slot.startTime.split(':').map(Number);
+                            const [endHour, endMin] = slot.endTime.split(':').map(Number);
+                            const startMinutes = startHour * 60 + startMin;
+                            const endMinutes = endHour * 60 + endMin;
+                            
+                            if (endMinutes <= startMinutes) {
+                                return res.status(400).json({
+                                    success: false,
+                                    message: `Slot ${i + 1} for ${day}: endTime must be after startTime`
+                                });
+                            }
                         }
                     }
                 }

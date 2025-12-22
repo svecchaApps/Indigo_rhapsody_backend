@@ -46,6 +46,22 @@ Creates or updates a stylist's availability schedule. If availability doesn't ex
       "isAvailable": true,
       "startTime": "09:00",
       "endTime": "18:00",
+      "slots": [
+        {
+          "startTime": "13:00",
+          "endTime": "13:30",
+          "duration": 30,
+          "isAvailable": true,
+          "maxBookings": 1
+        },
+        {
+          "startTime": "16:30",
+          "endTime": "17:00",
+          "duration": 30,
+          "isAvailable": true,
+          "maxBookings": 1
+        }
+      ],
       "breaks": [
         {
           "startTime": "13:00",
@@ -478,6 +494,72 @@ GET /api/stylist/availability/507f1f77bcf86cd799439011
 
 ---
 
+## Slot-Based Scheduling
+
+The availability system supports **slot-based scheduling** where stylists can define specific time slots for each day instead of just start/end times. This is useful for stylists who want to offer appointments at specific times (e.g., Monday at 1:00 PM, 1:30 PM, 4:30 PM, etc.).
+
+### Slot Structure
+Each day can have a `slots` array with specific time slots:
+
+```json
+{
+  "monday": {
+    "isAvailable": true,
+    "startTime": "13:00",  // Day start time (optional, for reference)
+    "endTime": "18:00",    // Day end time (optional, for reference)
+    "slots": [
+      {
+        "startTime": "13:00",    // Required: Slot start time (HH:MM)
+        "endTime": "13:30",      // Required: Slot end time (HH:MM)
+        "duration": 30,          // Optional: Duration in minutes (default: 60)
+        "isAvailable": true,      // Optional: Whether slot is available (default: true)
+        "maxBookings": 1         // Optional: Max bookings for this slot (default: 1)
+      },
+      {
+        "startTime": "13:30",
+        "endTime": "14:00",
+        "duration": 30,
+        "isAvailable": true,
+        "maxBookings": 1
+      },
+      {
+        "startTime": "16:30",
+        "endTime": "17:00",
+        "duration": 30,
+        "isAvailable": true,
+        "maxBookings": 1
+      }
+    ]
+  }
+}
+```
+
+### Example: Creating Slots for Monday Starting at 1:00 PM
+```json
+{
+  "weeklySchedule": {
+    "monday": {
+      "isAvailable": true,
+      "startTime": "13:00",
+      "endTime": "18:00",
+      "slots": [
+        { "startTime": "13:00", "endTime": "13:30", "duration": 30 },
+        { "startTime": "13:30", "endTime": "14:00", "duration": 30 },
+        { "startTime": "14:00", "endTime": "14:30", "duration": 30 },
+        { "startTime": "16:30", "endTime": "17:00", "duration": 30 }
+      ]
+    }
+  }
+}
+```
+
+### Slot Validation
+- `startTime` and `endTime` are **required** for each slot
+- Times must be in **HH:MM format (24-hour)**
+- `endTime` must be **after** `startTime`
+- `duration` is calculated automatically if not provided (endTime - startTime)
+- `maxBookings` allows multiple bookings per slot if needed
+
 ## Notes
 
 - **Partial Updates**: You can update only specific fields (e.g., just `weeklySchedule` or just `dateOverrides`)
@@ -485,4 +567,6 @@ GET /api/stylist/availability/507f1f77bcf86cd799439011
 - **Date Overrides**: Date overrides take precedence over weekly schedule
 - **Timezone**: Default timezone is "Asia/Kolkata" but can be customized
 - **Active Status**: Set `isActive: false` to temporarily disable availability without deleting it
+- **Slot-Based vs Range-Based**: You can use either `slots` array for specific time slots OR `startTime`/`endTime` for continuous availability ranges
+- **User Creation**: When creating test stylists without `userId`, a user is automatically created and returned in the response
 

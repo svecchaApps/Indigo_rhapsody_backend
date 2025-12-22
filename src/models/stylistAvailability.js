@@ -22,6 +22,29 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String, // Format: "HH:MM"
                 default: "18:00"
             },
+            // Slot-based scheduling (specific time slots)
+            slots: [{
+                startTime: {
+                    type: String, // Format: "HH:MM"
+                    required: true
+                },
+                endTime: {
+                    type: String, // Format: "HH:MM"
+                    required: true
+                },
+                duration: {
+                    type: Number, // Duration in minutes
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number, // Max bookings for this slot
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
@@ -41,6 +64,28 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String,
                 default: "18:00"
             },
+            slots: [{
+                startTime: {
+                    type: String,
+                    required: true
+                },
+                endTime: {
+                    type: String,
+                    required: true
+                },
+                duration: {
+                    type: Number,
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number,
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
@@ -60,6 +105,28 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String,
                 default: "18:00"
             },
+            slots: [{
+                startTime: {
+                    type: String,
+                    required: true
+                },
+                endTime: {
+                    type: String,
+                    required: true
+                },
+                duration: {
+                    type: Number,
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number,
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
@@ -79,6 +146,28 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String,
                 default: "18:00"
             },
+            slots: [{
+                startTime: {
+                    type: String,
+                    required: true
+                },
+                endTime: {
+                    type: String,
+                    required: true
+                },
+                duration: {
+                    type: Number,
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number,
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
@@ -98,6 +187,28 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String,
                 default: "18:00"
             },
+            slots: [{
+                startTime: {
+                    type: String,
+                    required: true
+                },
+                endTime: {
+                    type: String,
+                    required: true
+                },
+                duration: {
+                    type: Number,
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number,
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
@@ -117,6 +228,28 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String,
                 default: "18:00"
             },
+            slots: [{
+                startTime: {
+                    type: String,
+                    required: true
+                },
+                endTime: {
+                    type: String,
+                    required: true
+                },
+                duration: {
+                    type: Number,
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number,
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
@@ -136,6 +269,28 @@ const stylistAvailabilitySchema = new mongoose.Schema({
                 type: String,
                 default: "18:00"
             },
+            slots: [{
+                startTime: {
+                    type: String,
+                    required: true
+                },
+                endTime: {
+                    type: String,
+                    required: true
+                },
+                duration: {
+                    type: Number,
+                    default: 60
+                },
+                isAvailable: {
+                    type: Boolean,
+                    default: true
+                },
+                maxBookings: {
+                    type: Number,
+                    default: 1
+                }
+            }],
             breaks: [{
                 startTime: String,
                 endTime: String,
