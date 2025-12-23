@@ -691,6 +691,7 @@ exports.updateCartAddress = async (req, res) => {
 };
 
 
+
 exports.getCartTotalByUserId = async (req, res) => {
   try {
     // Get userId from params, query, or body
@@ -711,16 +712,13 @@ exports.getCartTotalByUserId = async (req, res) => {
       });
     }
 
-    // Find cart for the user
-    const cart = await Cart.findOne({ 
-      userId,
-      status: 'active' // Only get active carts
-    });
+    // Find cart for the user (don't filter by status - get any cart for the user)
+    const cart = await Cart.findOne({ userId });
 
-    if (!cart || !cart.products || cart.products.length === 0) {
+    if (!cart) {
       return res.status(200).json({
         success: true,
-        message: "Cart is empty",
+        message: "Cart not found for this user",
         data: {
           userId: userId,
           totalAmount: 0,
@@ -731,6 +729,33 @@ exports.getCartTotalByUserId = async (req, res) => {
           itemCount: 0,
           productCount: 0,
           isEmpty: true
+        }
+      });
+    }
+
+    // Debug logging (can be removed in production)
+    console.log(`Cart found for userId: ${userId}`);
+    console.log(`Cart products count: ${cart.products ? cart.products.length : 'null'}`);
+    console.log(`Cart status: ${cart.status}`);
+    console.log(`Cart total_amount: ${cart.total_amount}`);
+
+    // Check if cart has products
+    if (!cart.products || !Array.isArray(cart.products) || cart.products.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Cart is empty",
+        data: {
+          userId: userId,
+          cartId: cart._id,
+          totalAmount: roundToTwoDecimals(cart.total_amount || 0),
+          subtotal: roundToTwoDecimals(cart.subtotal || 0),
+          discountAmount: roundToTwoDecimals(cart.discount_amount || 0),
+          taxAmount: roundToTwoDecimals(cart.tax_amount || 0),
+          shippingCost: roundToTwoDecimals(cart.shipping_cost || 0),
+          itemCount: 0,
+          productCount: 0,
+          isEmpty: true,
+          status: cart.status
         }
       });
     }
