@@ -689,3 +689,85 @@ exports.updateCartAddress = async (req, res) => {
     });
   }
 };
+
+
+exports.getCartTotalByUserId = async (req, res) => {
+  try {
+    // Get userId from params, query, or body
+    const userId = req.params.userId || req.query.userId || req.body.userId;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required. Provide userId in params, query, or body."
+      });
+    }
+
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format"
+      });
+    }
+
+    // Find cart for the user
+    const cart = await Cart.findOne({ 
+      userId,
+      status: 'active' // Only get active carts
+    });
+
+    if (!cart || !cart.products || cart.products.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Cart is empty",
+        data: {
+          userId: userId,
+          totalAmount: 0,
+          subtotal: 0,
+          discountAmount: 0,
+          taxAmount: 0,
+          shippingCost: 0,
+          itemCount: 0,
+          productCount: 0,
+          isEmpty: true
+        }
+      });
+    }
+
+    // Calculate item count (total quantity of all items)
+    const itemCount = cart.products.reduce((total, item) => {
+      return total + (item.quantity || 1);
+    }, 0);
+
+    // Product count (number of unique products)
+    const productCount = cart.products.length;
+
+    return res.status(200).json({
+      success: true,
+      message: "Cart total retrieved successfully",
+      data: {
+        userId: userId,
+        cartId: cart._id,
+        totalAmount: roundToTwoDecimals(cart.total_amount || 0),
+        subtotal: roundToTwoDecimals(cart.subtotal || 0),
+        discountAmount: roundToTwoDecimals(cart.discount_amount || 0),
+        taxAmount: roundToTwoDecimals(cart.tax_amount || 0),
+        shippingCost: roundToTwoDecimals(cart.shipping_cost || 0),
+        itemCount: itemCount,
+        productCount: productCount,
+        isEmpty: false,
+        discountApplied: cart.discount_applied || false,
+        lastUpdated: cart.lastUpdatedDate
+      }
+    });
+
+  } catch (error) {
+    console.error("Error getting cart total by userId:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error retrieving cart total",
+      error: error.message
+    });
+  }
+};
