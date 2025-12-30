@@ -376,19 +376,34 @@ exports.initiateRazorpayPayment = async (req, res) => {
 };
 
 // Razorpay Webhook Handler
+
+// Razorpay Webhook Handler
 exports.razorpayWebhook = async (req, res) => {
   try {
     console.log("🔔 Razorpay Webhook triggered");
     console.log("Webhook payload:", JSON.stringify(req.body, null, 2));
+    console.log("📋 Request Headers:", JSON.stringify(req.headers, null, 2));
 
-    const webhookSignature = req.headers["x-razorpay-signature"];
+    // Express normalizes headers to lowercase, but check multiple formats for robustness
+    const webhookSignature = 
+      req.headers["x-razorpay-signature"] || 
+      req.headers["X-Razorpay-Signature"] ||
+      req.headers["X-RAZORPAY-SIGNATURE"];
+    
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
     if (!webhookSignature) {
       console.error("❌ Missing Razorpay webhook signature");
-      return res.status(400).json({
+      console.error("Available headers:", Object.keys(req.headers));
+      console.error("Looking for: x-razorpay-signature (case-insensitive)");
+      // Return 200 to acknowledge receipt and prevent Razorpay from retrying
+      return res.status(200).json({
         success: false,
         message: "Missing webhook signature",
+        debug: {
+          availableHeaders: Object.keys(req.headers),
+          expectedHeader: "x-razorpay-signature"
+        }
       });
     }
 
@@ -404,7 +419,8 @@ exports.razorpayWebhook = async (req, res) => {
       console.error("❌ Invalid Razorpay webhook signature");
       console.error("Expected:", expectedSignature);
       console.error("Received:", webhookSignature);
-      return res.status(400).json({
+      // Return 200 to acknowledge receipt and prevent Razorpay from retrying
+      return res.status(200).json({
         success: false,
         message: "Invalid webhook signature",
       });
@@ -417,7 +433,8 @@ exports.razorpayWebhook = async (req, res) => {
 
     if (!webhookData.success) {
       console.error("❌ Failed to handle webhook:", webhookData.message);
-      return res.status(400).json({
+      // Return 200 to acknowledge receipt
+      return res.status(200).json({
         success: false,
         message: webhookData.message,
       });
@@ -458,11 +475,97 @@ exports.razorpayWebhook = async (req, res) => {
         });
       }
 
+      // If payment not found in PaymentDetails, check for StylistBooking
       if (!payment) {
+        console.log(`🔍 Payment not found in PaymentDetails, checking StylistBooking...`);
+        const stylistBooking = await StylistBooking.findOne({
+          razorpayOrderId: razorpayOrderId
+        }).populate('userId stylistId');
+
+        if (stylistBooking) {
+          console.log(`✅ Stylist booking found: ${stylistBooking._id}`);
+          
+          // Update stylist booking payment status
+          stylistBooking.razorpayPaymentId = razorpayPaymentId;
+          stylistBooking.paymentStatus = status === "captured" || status === "paid" ? "completed" : "failed";
+          stylistBooking.status = status === "captured" || status === "paid" ? "confirmed" : stylistBooking.status;
+          stylistBooking.paymentCompletedAt = status === "captured" || status === "paid" ? new Date() : null;
+          stylistBooking.updatedAt = new Date();
+
+          await stylistBooking.save();
+
+          console.log("✅ Stylist booking payment status updated:", {
+            bookingId: stylistBooking._id,
+            paymentStatus: stylistBooking.paymentStatus,
+            bookingStatus: stylistBooking.status,
+          });
+
+          // Send notifications if payment successful
+          if (status === "captured" || status === "paid") {
+            try {
+              // Notify user
+              const userNotification = {
+                userId: stylistBooking.userId._id,
+                title: "Booking Confirmed",
+                message: `Your booking with ${stylistBooking.stylistId?.stylistName || 'stylist'} has been confirmed.`,
+                type: "booking_confirmed",
+                data: {
+                  bookingId: stylistBooking._id,
+                  stylistName: stylistBooking.stylistId?.stylistName,
+                  scheduledDate: stylistBooking.scheduledDate,
+                  scheduledTime: stylistBooking.scheduledTime
+                }
+              };
+
+              await createNotification(userNotification);
+              if (stylistBooking.userId.fcmToken) {
+                await sendFcmNotification(
+                  stylistBooking.userId.fcmToken,
+                  userNotification.title,
+                  userNotification.message
+                );
+              }
+
+              // Notify stylist
+              if (stylistBooking.stylistId?.userId) {
+                const stylistNotification = {
+                  userId: stylistBooking.stylistId.userId,
+                  title: "New Booking Received",
+                  message: `You have a new booking from ${stylistBooking.userId.displayName || 'customer'}.`,
+                  type: "new_booking_received",
+                  data: {
+                    bookingId: stylistBooking._id,
+                    userName: stylistBooking.userId.displayName,
+                    scheduledDate: stylistBooking.scheduledDate,
+                    scheduledTime: stylistBooking.scheduledTime
+                  }
+                };
+
+                await createNotification(stylistNotification);
+              }
+            } catch (notificationError) {
+              console.error("❌ Notification error:", notificationError);
+            }
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: "Stylist booking payment processed successfully",
+            data: {
+              bookingId: stylistBooking._id,
+              paymentStatus: stylistBooking.paymentStatus,
+              bookingStatus: stylistBooking.status,
+              paymentId: razorpayPaymentId,
+            },
+          });
+        }
+
         console.error(`❌ Payment record not found for Razorpay order: ${razorpayOrderId}`);
-        return res.status(404).json({
+        // Return 200 to acknowledge receipt even if payment not found
+        return res.status(200).json({
           success: false,
           message: "Payment record not found",
+          razorpayOrderId: razorpayOrderId,
         });
       }
 
@@ -510,9 +613,11 @@ exports.razorpayWebhook = async (req, res) => {
         if (!cart) {
           console.error("❌ Cart not found for order creation");
           console.error("Cart ID:", payment.cartId);
-          return res.status(404).json({
+          // Return 200 to acknowledge receipt, but log the error
+          return res.status(200).json({
             success: false,
             message: "Cart not found for order creation",
+            cartId: payment.cartId,
           });
         }
 
@@ -532,10 +637,12 @@ exports.razorpayWebhook = async (req, res) => {
         ) {
           console.error("❌ Cart does not have complete address information");
           console.error("Cart address:", cart.address);
-          return res.status(400).json({
+          // Return 200 to acknowledge receipt, but log the error
+          return res.status(200).json({
             success: false,
             message:
               "Cart does not have complete address information. Please update cart address before payment.",
+            cartId: cart._id,
           });
         }
 
@@ -591,10 +698,12 @@ exports.razorpayWebhook = async (req, res) => {
             userId: payment.userId.toString(),
             cartId: payment.cartId.toString(),
           });
-          return res.status(500).json({
+          // Return 200 to acknowledge receipt, but log the error
+          return res.status(200).json({
             success: false,
             message: "Error creating order",
             error: error.message,
+            paymentId: payment._id,
           });
         }
       } else {
@@ -642,6 +751,23 @@ exports.razorpayWebhook = async (req, res) => {
           paymentId: payment._id,
           status: payment.status,
         });
+      } else {
+        // Check for stylist booking
+        const stylistBooking = await StylistBooking.findOne({
+          razorpayOrderId: razorpayOrderId
+        });
+
+        if (stylistBooking) {
+          stylistBooking.paymentStatus = "failed";
+          stylistBooking.razorpayPaymentId = razorpayPaymentId;
+          stylistBooking.updatedAt = new Date();
+          await stylistBooking.save();
+
+          console.log("✅ Stylist booking payment failure recorded:", {
+            bookingId: stylistBooking._id,
+            paymentStatus: stylistBooking.paymentStatus,
+          });
+        }
       }
 
       return res.status(200).json({
@@ -658,10 +784,12 @@ exports.razorpayWebhook = async (req, res) => {
     }
   } catch (error) {
     console.error("❌ Error processing Razorpay webhook:", error);
-    return res.status(500).json({
+    // Return 200 to acknowledge receipt and prevent Razorpay from retrying
+    return res.status(200).json({
       success: false,
       message: "Error processing webhook",
       error: error.message,
     });
   }
 };
+
