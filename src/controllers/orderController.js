@@ -562,7 +562,7 @@ exports.getOrdersByDesignerRef = async (req, res) => {
         amount: designerAmount,
         paymentMethod: order.paymentMethod,
         status: order.status,
-        createdAt: order.createdAt,
+        createdAt: order.createdDate,
         address: order.shippingDetails.address,
         city: order.shippingDetails.address.city,
         state: order.shippingDetails.address.state,
