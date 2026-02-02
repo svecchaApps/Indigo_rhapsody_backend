@@ -1391,3 +1391,71 @@ exports.getProductSampleImages = async (req, res) => {
     });
   }
 };
+
+const COMMISSION_THRESHOLD = 10000;
+const COMMISSION_RATE = 0.2;
+
+/**
+ * Calculate and update commission_total for a designer based on their order sales.
+ * Total sales = sum of (price * quantity) for all products of this designer in orders with paymentStatus "Completed".
+ * If total sales < 10,000: commission = 0. If total sales >= 10,000: commission = 20% of total sales.
+ */
+exports.getCommissionTotalForDesigner = async (req, res) => {
+  try {
+    const { designerId } = req.params;
+
+    if (!designerId) {
+      return res.status(400).json({ message: "Designer ID is required" });
+    }
+
+    const designer = await Designer.findById(designerId);
+    if (!designer) {
+      return res.status(404).json({ message: "Designer not found" });
+    }
+
+    // Total sales from orders: only completed payments, only this designer's products
+    const salesResult = await Order.aggregate([
+      { $match: { paymentStatus: "Completed" } },
+      { $unwind: "$products" },
+      {
+        $match: {
+          "products.designerRef":
+            typeof designerId === "string"
+              ? designerId
+              : designerId.toString(),
+        },
+      },
+      {
+        $group: {
+          _id: "$products.designerRef",
+          totalSales: {
+            $sum: { $multiply: ["$products.price", "$products.quantity"] },
+          },
+        },
+      },
+    ]);
+
+    const totalSales = salesResult.length > 0 ? salesResult[0].totalSales : 0;
+    const commission_total =
+      totalSales < COMMISSION_THRESHOLD
+        ? 0
+        : Math.round(totalSales * COMMISSION_RATE * 100) / 100;
+
+    designer.comission_total = commission_total;
+    await designer.save();
+
+    return res.status(200).json({
+      designerId,
+      totalSales,
+      commission_total,
+      commissionRate:
+        totalSales < COMMISSION_THRESHOLD ? 0 : COMMISSION_RATE,
+    });
+  } catch (error) {
+    console.error("Error calculating designer commission:", error);
+    return res.status(500).json({
+      message: "Error calculating designer commission",
+      error: error.message,
+    });
+  }
+};
