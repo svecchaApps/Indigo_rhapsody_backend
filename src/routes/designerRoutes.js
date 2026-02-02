@@ -175,4 +175,12 @@ router.get(
   designerController.getProductSampleImages
 );
 
+// Get/calculate commission total for a designer (Designer or Admin)
+router.get(
+  "/:designerId/commission",
+  authMiddleware,
+  roleMiddleware(["Designer", "Admin"]),
+  designerController.getCommissionTotalForDesigner
+);
+
 module.exports = router;
