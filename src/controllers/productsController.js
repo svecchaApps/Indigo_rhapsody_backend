@@ -1145,7 +1145,8 @@ exports.getProductsByDesigner = async (req, res) => {
     }
 
     // Build the query object dynamically
-    const query = { designerRef };
+    const query = { designerRef,  $or: [{ enabled: true }, { enabled: { $exists: false } }],
+ };
 
     if (category) query.category = category;
     if (subCategory) query.subCategory = subCategory;
