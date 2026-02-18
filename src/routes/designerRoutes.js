@@ -175,6 +175,13 @@ router.get(
   designerController.getProductSampleImages
 );
 
+router.delete(
+  "/:designerId/product-sample-images",
+  authMiddleware,
+  roleMiddleware(["Designer", "Admin"]),
+  designerController.deleteProductSampleImages
+);
+
 // Get/calculate commission total for a designer (Designer or Admin)
 router.get(
   "/:designerId/commission",
