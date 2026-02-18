@@ -1460,3 +1460,60 @@ exports.getCommissionTotalForDesigner = async (req, res) => {
     });
   }
 };
+// Delete Product Sample Images for Designer
+exports.deleteProductSampleImages = async (req, res) => {
+  try {
+    const { designerId } = req.params;
+    const { imageIndexes, clearAll } = req.body || {};
+
+    // Validate designer ID
+    if (!designerId || !mongoose.Types.ObjectId.isValid(designerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid designer ID is required",
+      });
+    }
+
+    const designer = await Designer.findById(designerId);
+    if (!designer) {
+      return res.status(404).json({
+        success: false,
+        message: "Designer not found",
+      });
+    }
+
+    let updatedImages = [...(designer.product_sample_images || [])];
+
+    if (clearAll || !imageIndexes || (Array.isArray(imageIndexes) && imageIndexes.length === 0)) {
+      updatedImages = [];
+    } else if (imageIndexes && Array.isArray(imageIndexes) && imageIndexes.length > 0) {
+      const sortedIndexes = [...imageIndexes].sort((a, b) => b - a);
+      sortedIndexes.forEach((index) => {
+        if (index >= 0 && index < updatedImages.length) {
+          updatedImages.splice(index, 1);
+        }
+      });
+    }
+
+    designer.product_sample_images = updatedImages;
+    designer.updatedTime = Date.now();
+    await designer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Product sample images deleted successfully",
+      data: {
+        designerId: designer._id,
+        remainingImages: updatedImages.length,
+        images: updatedImages,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting product sample images:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting product sample images",
+      error: error.message,
+    });
+  }
+};
