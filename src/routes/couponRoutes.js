@@ -12,7 +12,7 @@ router.put("/:id", authMiddleware, roleMiddleware(["Admin"]), couponController.u
 router.delete("/:id", authMiddleware, roleMiddleware(["Admin"]), couponController.deleteCoupon);
 router.post(
   "/applyCoupon",
-  roleMiddleware(["User"]),
+  // roleMiddleware(["User"]),
   couponController.applyCouponToCart
 );
 router.post(
