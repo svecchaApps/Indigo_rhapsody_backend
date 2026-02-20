@@ -268,6 +268,30 @@ exports.applyCouponToCart = async (req, res) => {
   }
 };
 
+exports.getActiveCoupons = async (req, res) => {
+  try {
+    const now = new Date();
+    const coupons = await Coupon.find({
+      is_active: true,
+      expiryDate: { $gte: now },
+    }).sort({ expiryDate: 1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Active coupons fetched successfully",
+      data: coupons,
+      count: coupons.length,
+    });
+  } catch (error) {
+    console.error("Error fetching active coupons:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching active coupons",
+      error: error.message,
+    });
+  }
+};
+
 exports.createCouponForPromotion = async (req, res) => {
   try {
     const { couponCode, couponAmount, expiryDate, maxUsage } = req.body;
