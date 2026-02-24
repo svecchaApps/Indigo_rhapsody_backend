@@ -14,7 +14,7 @@
   ],
   "crons": [
     {
-      "path": "https://indigo-rhapsody-backend-ten.vercel.app/coupon/cron/cleanup-coupons?token=l1egbPgv16GzuabemtZhiDC5WC1TSuISX0qHCbMW5EOyCF770gDBuvxKEKa7BrAr",
+      "path": "/coupon/cron/cleanup-coupons",
       "schedule": "0 * * * *"
     }
   ]
