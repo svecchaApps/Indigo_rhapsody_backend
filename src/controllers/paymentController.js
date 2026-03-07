@@ -475,6 +475,17 @@ exports.razorpayWebhook = async (req, res) => {
         });
       }
 
+      // Idempotency: if this payment was already completed, we've already processed this webhook (e.g. duplicate from Razorpay) — return 200 and skip
+      if (payment && (payment.paymentStatus === "Completed" || payment.status === "completed")) {
+        console.log(`⏭️ Razorpay webhook already processed for order ${razorpayOrderId}, skipping`);
+        return res.status(200).json({
+          success: true,
+          message: "Webhook already processed",
+          razorpayOrderId,
+          razorpayPaymentId,
+        });
+      }
+
       // If payment not found in PaymentDetails, check for StylistBooking
       if (!payment) {
         console.log(`🔍 Payment not found in PaymentDetails, checking StylistBooking...`);
@@ -483,6 +494,15 @@ exports.razorpayWebhook = async (req, res) => {
         }).populate('userId stylistId');
 
         if (stylistBooking) {
+          // Idempotency: already processed
+          if (stylistBooking.paymentStatus === "completed") {
+            console.log(`⏭️ Stylist booking webhook already processed: ${stylistBooking._id}, skipping`);
+            return res.status(200).json({
+              success: true,
+              message: "Webhook already processed",
+              bookingId: stylistBooking._id,
+            });
+          }
           console.log(`✅ Stylist booking found: ${stylistBooking._id}`);
           
           // Update stylist booking payment status
@@ -569,24 +589,32 @@ exports.razorpayWebhook = async (req, res) => {
         });
       }
 
-      // Update payment status
+      // Update payment status atomically: only update if not already Completed (prevents duplicate processing when webhook is called twice)
       const updateData = {
         paymentStatus: status === "captured" || status === "paid" ? "Completed" : "Failed",
         status: status === "captured" || status === "paid" ? "completed" : "failed",
         completedAt: status === "captured" || status === "paid" ? new Date() : null,
         updatedAt: new Date(),
       };
-
-      // Only update paymentId if it's different from orderId (i.e., we have an actual payment ID)
       if (razorpayPaymentId && razorpayPaymentId !== razorpayOrderId) {
         updateData.paymentId = razorpayPaymentId;
       }
 
-      payment = await PaymentDetails.findByIdAndUpdate(
-        payment._id,
+      payment = await PaymentDetails.findOneAndUpdate(
+        { _id: payment._id, paymentStatus: { $ne: "Completed" }, status: { $ne: "completed" } },
         { $set: updateData },
         { new: true }
       );
+
+      if (!payment) {
+        console.log(`⏭️ Razorpay webhook already processed (concurrent) for order ${razorpayOrderId}, skipping`);
+        return res.status(200).json({
+          success: true,
+          message: "Webhook already processed",
+          razorpayOrderId,
+          razorpayPaymentId,
+        });
+      }
 
       console.log("✅ Payment status updated:", {
         paymentId: payment._id,
