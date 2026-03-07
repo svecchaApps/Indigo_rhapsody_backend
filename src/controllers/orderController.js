@@ -245,16 +245,6 @@ exports.createOrder = async (req, res) => {
   try {
     const { userId, cartId, paymentMethod, notes, address } = req.body;
 
-    // Idempotency: if an order already exists for this cart, return it (prevents duplicate orders on webhook retries)
-    const existingOrder = await Order.findOne({ cartId }).sort({ createdDate: -1 });
-    if (existingOrder) {
-      return res.status(200).json({
-        message: "Order already created for this cart",
-        order: existingOrder,
-        orderId: existingOrder.orderId,
-      });
-    }
-
     // Validate User
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -337,185 +327,179 @@ exports.createOrder = async (req, res) => {
 
     await order.save();
 
-    // Clear the user's cart (order is already saved - do this before any optional steps)
+    // Clear the user's cart
     cart.products = [];
     cart.discount_amount = 0;
     await cart.save();
 
-    // Emails, invoice, FCM: never throw so webhook can return 200 and avoid duplicate order creation on retry
-    try {
-      const designerEmails = new Set();
-      for (const product of orderProducts) {
-        const designer = await User.findById(product.designerRef).select("email");
-        if (designer) designerEmails.add(designer.email);
+    const designerEmails = new Set();
+    for (const product of orderProducts) {
+      const designer = await User.findById(product.designerRef).select("email");
+      if (designer) designerEmails.add(designer.email);
+    }
+
+    designerEmails.forEach(async (email) => {
+      try {
+        await notifyDesignerByEmail(email, orderProducts);
+      } catch (error) {
+        console.error(`Error sending email to designer ${email}:`, error);
       }
+    });
 
-      designerEmails.forEach(async (email) => {
-        try {
-          await notifyDesignerByEmail(email, orderProducts);
-        } catch (err) {
-          console.error(`Error sending email to designer ${email}:`, err);
-        }
-      });
+    const email = user.email;
 
-      const email = user.email;
+    // Generate and upload the invoice to Firebase
+    const firebaseUrl = await generateAndUploadInvoice(order);
 
-      // Generate and upload the invoice to Firebase
-      const firebaseUrl = await generateAndUploadInvoice(order);
+    // Send confirmation email with invoice link
+    // const mailOptions = {
+    //   from: "orders@indigorhapsody.com",
+    //   to: email,
+    //   subject: "Order Confirmation",
+    //   html: `
+    //   <!DOCTYPE html>
+    //   <html lang="en">
+    //   <head>
+    //     <meta charset="UTF-8" />
+    //     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    //     <title>Order Confirmation</title>
+    //     <style>
+    //       body {
+    //         font-family: Arial, sans-serif;
+    //         margin: 0;
+    //         padding: 0;
+    //         background-color: #f9f9f9;
+    //       }
+    //       .email-container {
+    //         max-width: 600px;
+    //         margin: 20px auto;
+    //         background: #ffffff;
+    //         border-radius: 8px;
+    //         box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    //         overflow: hidden;
+    //       }
+    //       .header {
+    //         background-color: #004080;
+    //         color: #ffffff;
+    //         text-align: center;
+    //         padding: 20px;
+    //       }
+    //       .header img {
+    //         max-width: 100px;
+    //         margin-bottom: 10px;
+    //       }
+    //       .header h1 {
+    //         margin: 0;
+    //         font-size: 28px;
+    //       }
+    //       .header p {
+    //         margin: 5px 0 0;
+    //         font-size: 14px;
+    //       }
+    //       .content {
+    //         padding: 20px;
+    //         color: #333333;
+    //       }
+    //       .content h2 {
+    //         font-size: 20px;
+    //         margin-bottom: 10px;
+    //         color: #004080;
+    //       }
+    //       .content p {
+    //         font-size: 16px;
+    //         margin: 10px 0;
+    //       }
+    //       .content .order-details {
+    //         margin: 20px 0;
+    //       }
+    //       .content .order-details table {
+    //         width: 100%;
+    //         border-collapse: collapse;
+    //       }
+    //       .content .order-details table th,
+    //       .content .order-details table td {
+    //         text-align: left;
+    //         padding: 8px;
+    //         border-bottom: 1px solid #eeeeee;
+    //       }
+    //       .content .order-details table th {
+    //         color: #666666;
+    //       }
+    //       .content .total {
+    //         font-size: 18px;
+    //         margin: 10px 0;
+    //       }
+    //       .footer {
+    //         background-color: #f4f4f4;
+    //         padding: 15px;
+    //         text-align: center;
+    //         font-size: 14px;
+    //         color: #999999;
+    //       }
+    //       .footer a {
+    //         color: #004080;
+    //         text-decoration: none;
+    //         margin: 0 5px;
+    //       }
+    //     </style>
+    //   </head>
+    //   <body>
+    //     <div class="email-container">
+    //       <div class="header">
+    //         <img
+    //           src="https://firebasestorage.googleapis.com/v0/b/sveccha-11c31.appspot.com/o/Logo.png?alt=media&token=c8b4c22d-8256-4092-8b46-e89e001bd1fe"
+    //           alt="Logo"
+    //         />
+    //         <h1>Order Received!</h1>
+    //         <p>Order No: ${order.orderId}</p>
+    //       </div>
+    //       <div class="content">
+    //         <h2>Hello, ${user.displayName}!</h2>
+    //         <p>Thank you for your order. Below are the details of your order:</p>
+    //         <div class="order-details">
+    //           <table>
+    //             <tr>
+    //               <th>Item</th>
+    //               <th>Quantity</th>
+    //               <th>Price</th>
+    //             </tr>
+    //             ${orderProducts
+    //       .map(
+    //         (product) => `
+    //             <tr>
+    //               <td>${product.productName}</td>
+    //               <td>${product.quantity}</td>
+    //               <td>${product.price}</td>
+    //             </tr>
+    //             `
+    //       )
+    //       .join("")}
+    //           </table>
+    //         </div>
+    //         <p class="total"><strong>Subtotal:</strong> ₹${subtotal}</p>
+    //         <p class="total"><strong>Shipping:</strong> ₹${shipping_cost}</p>
+    //         <p class="total"><strong>Discount:</strong> -₹${discount_amount}</p>
+    //         <p class="total"><strong>Total Amount:</strong> ₹${total_amount}</p>
+    //         <p>You can download your invoice <a href="${firebaseUrl}">here</a>.</p>
+    //       </div>
+    //       <div class="footer">
+    //         <p>Follow us: <a href="https://twitter.com">Twitter</a> | <a href="https://facebook.com">Facebook</a></p>
+    //       </div>
+    //     </div>
+    //   </body>
+    //   </html>
+    //   `,
+    // };
 
-      // Send confirmation email with invoice link
-      const mailOptions = {
-        from: "orders@indigorhapsody.com",
-        to: email,
-        subject: "Order Confirmation",
-        html: `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Order Confirmation</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f9f9f9;
-          }
-          .email-container {
-            max-width: 600px;
-            margin: 20px auto;
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-          }
-          .header {
-            background-color: #004080;
-            color: #ffffff;
-            text-align: center;
-            padding: 20px;
-          }
-          .header img {
-            max-width: 100px;
-            margin-bottom: 10px;
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 28px;
-          }
-          .header p {
-            margin: 5px 0 0;
-            font-size: 14px;
-          }
-          .content {
-            padding: 20px;
-            color: #333333;
-          }
-          .content h2 {
-            font-size: 20px;
-            margin-bottom: 10px;
-            color: #004080;
-          }
-          .content p {
-            font-size: 16px;
-            margin: 10px 0;
-          }
-          .content .order-details {
-            margin: 20px 0;
-          }
-          .content .order-details table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-          .content .order-details table th,
-          .content .order-details table td {
-            text-align: left;
-            padding: 8px;
-            border-bottom: 1px solid #eeeeee;
-          }
-          .content .order-details table th {
-            color: #666666;
-          }
-          .content .total {
-            font-size: 18px;
-            margin: 10px 0;
-          }
-          .footer {
-            background-color: #f4f4f4;
-            padding: 15px;
-            text-align: center;
-            font-size: 14px;
-            color: #999999;
-          }
-          .footer a {
-            color: #004080;
-            text-decoration: none;
-            margin: 0 5px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="header">
-            <img
-              src="https://firebasestorage.googleapis.com/v0/b/sveccha-11c31.appspot.com/o/Logo.png?alt=media&token=c8b4c22d-8256-4092-8b46-e89e001bd1fe"
-              alt="Logo"
-            />
-            <h1>Order Received!</h1>
-            <p>Order No: ${order.orderId}</p>
-          </div>
-          <div class="content">
-            <h2>Hello, ${user.displayName}!</h2>
-            <p>Thank you for your order. Below are the details of your order:</p>
-            <div class="order-details">
-              <table>
-                <tr>
-                  <th>Item</th>
-                  <th>Quantity</th>
-                  <th>Price</th>
-                </tr>
-                ${orderProducts
-          .map(
-            (product) => `
-                <tr>
-                  <td>${product.productName}</td>
-                  <td>${product.quantity}</td>
-                  <td>${product.price}</td>
-                </tr>
-                `
-          )
-          .join("")}
-              </table>
-            </div>
-            <p class="total"><strong>Subtotal:</strong> ₹${subtotal}</p>
-            <p class="total"><strong>Shipping:</strong> ₹${shipping_cost}</p>
-            <p class="total"><strong>Discount:</strong> -₹${discount_amount}</p>
-            <p class="total"><strong>Total Amount:</strong> ₹${total_amount}</p>
-            <p>You can download your invoice <a href="${firebaseUrl}">here</a>.</p>
-          </div>
-          <div class="footer">
-            <p>Follow us: <a href="https://twitter.com">Twitter</a> | <a href="https://facebook.com">Facebook</a></p>
-          </div>
-        </div>
-      </body>
-      </html>
-      `,
-      };
+    // await transporter.sendMail(mailOptions);
 
-      await transporter.sendMail(mailOptions);
-
-      // Send FCM Notification
-      if (fcmToken) {
-        await sendFcmNotification(
-          fcmToken,
-          "Order Placed Successfully",
-          `Your order with ID ${order.orderId} has been placed successfully.`
-        );
-      }
-    } catch (postOrderError) {
-      // Log but do not throw: order is already saved; failing email/invoice must not cause webhook retry or duplicate orders
-      console.error("Order created but post-order step failed (email/invoice/FCM):", postOrderError);
+    // Send FCM Notification
+    if (fcmToken) {
+      await sendFcmNotification(
+        fcmToken,
+        "Order Placed Successfully",
+        `Your order with ID ${order.orderId} has been placed successfully.`
+      );
     }
 
     res.status(201).json({
