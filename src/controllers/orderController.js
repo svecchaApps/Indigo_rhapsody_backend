@@ -330,6 +330,12 @@ exports.createOrder = async (req, res) => {
     // Clear the user's cart
     cart.products = [];
     cart.discount_amount = 0;
+       cart.discount_applied = false;
+    cart.subtotal = 0;
+    cart.total_amount = 0;
+    cart.appliedCoupon = undefined;
+    cart.couponAppliedAt = undefined;
+    cart.couponHoldExpiry = undefined;
     await cart.save();
 
     const designerEmails = new Set();
