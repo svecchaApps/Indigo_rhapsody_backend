@@ -262,16 +262,34 @@ exports.applyCouponToCart = async (req, res) => {
         .json({ message: "A coupon is already applied to this cart" });
     }
 
-    // Calculate new totals
+    if (!cart.products || cart.products.length === 0) {
+      return res.status(400).json({
+        message: "Cart is empty. Add items before applying a coupon.",
+      });
+    }
+
     const subtotal = cart.products.reduce(
-      (sum, product) => sum + product.price * product.quantity,
+      (sum, product) => sum + (Number(product.price) || 0) * (Number(product.quantity) || 0),
       0
     );
-    const discountAmount = coupon.couponAmount;
-    const totalAmount =
-      subtotal - discountAmount + cart.shipping_cost + cart.tax_amount;
 
-    // Update cart details
+    if (subtotal <= 0) {
+      return res.status(400).json({
+        message: "Cart subtotal must be greater than zero to apply a coupon.",
+      });
+    }
+
+    const couponAmount = Number(coupon.couponAmount);
+    if (couponAmount <= 0 || !Number.isFinite(couponAmount)) {
+      return res.status(400).json({ message: "Invalid coupon discount amount." });
+    }
+
+    const discountAmount = Math.min(couponAmount, subtotal);
+    const totalAmount = Math.max(
+      0,
+      subtotal - discountAmount + (cart.shipping_cost || 0) + (cart.tax_amount || 0)
+    );
+
     cart.subtotal = roundToTwoDecimals(subtotal);
     cart.discount_applied = true;
     cart.discount_amount = roundToTwoDecimals(discountAmount);
@@ -491,15 +509,36 @@ exports.applyCouponUniversal = async (req, res) => {
         message: "A coupon is already applied to this cart",
       });
 
-    /* ─── compute subtotal & discount ─────────────────────────────────── */
+    /* ─── compute subtotal & discount (edge cases) ─────────────────────── */
+    if (!cart.products || cart.products.length === 0)
+      return res.status(400).json({
+        success: false,
+        message: "Cart is empty. Add items before applying a coupon.",
+      });
+
     const subtotal = cart.products.reduce(
-      (sum, item) => sum + item.price * item.quantity,
+      (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
       0
     );
 
-    const discount = Math.min(coupon.couponAmount, subtotal); // never exceed subtotal
-    const total =
-      subtotal - discount + (cart.shipping_cost || 0) + (cart.tax_amount || 0);
+    if (subtotal <= 0)
+      return res.status(400).json({
+        success: false,
+        message: "Cart subtotal must be greater than zero to apply a coupon.",
+      });
+
+    const couponAmount = Number(coupon.couponAmount);
+    if (couponAmount <= 0 || !Number.isFinite(couponAmount))
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon discount amount.",
+      });
+
+    const discount = Math.min(couponAmount, subtotal); // never exceed subtotal
+    const total = Math.max(
+      0,
+      subtotal - discount + (cart.shipping_cost || 0) + (cart.tax_amount || 0)
+    );
 
     /* ─── update cart ─────────────────────────────────────────────────── */
     cart.subtotal = round2(subtotal);
