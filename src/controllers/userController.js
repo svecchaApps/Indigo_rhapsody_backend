@@ -1074,6 +1074,47 @@ exports.loginAdmin = async (req, res) => {
   }
 };
 
+exports.updateUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { displayName, email, phoneNumber, fcmToken } = req.body;
+
+    const currentUser = req.user;
+    const isAdmin = currentUser?.role === "Admin";
+    const isOwnProfile =
+      currentUser && currentUser._id && currentUser._id.toString() === userId;
+    if (!isAdmin && !isOwnProfile) {
+      return res
+        .status(403)
+        .json({ message: "You can only update your own profile" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (displayName !== undefined) user.displayName = displayName;
+    if (email !== undefined) user.email = email;
+    if (phoneNumber !== undefined) user.phoneNumber = phoneNumber;
+    if (fcmToken !== undefined) user.fcmToken = fcmToken;
+
+    await user.save();
+
+    const updated = await User.findById(userId).select("-password");
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      user: updated,
+    });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
 exports.checkUserExists = async (req, res) => {
   const { phoneNumber } = req.body;
 
