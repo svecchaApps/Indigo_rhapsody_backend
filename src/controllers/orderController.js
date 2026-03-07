@@ -245,6 +245,16 @@ exports.createOrder = async (req, res) => {
   try {
     const { userId, cartId, paymentMethod, notes, address } = req.body;
 
+    // Idempotency: if an order already exists for this cart, return it (prevents duplicate orders on webhook retries)
+    const existingOrder = await Order.findOne({ cartId }).sort({ createdDate: -1 });
+    if (existingOrder) {
+      return res.status(200).json({
+        message: "Order already created for this cart",
+        order: existingOrder,
+        orderId: existingOrder.orderId,
+      });
+    }
+
     // Validate User
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -327,37 +337,38 @@ exports.createOrder = async (req, res) => {
 
     await order.save();
 
-    // Clear the user's cart
+    // Clear the user's cart (order is already saved - do this before any optional steps)
     cart.products = [];
     cart.discount_amount = 0;
     await cart.save();
 
-    const designerEmails = new Set();
-    for (const product of orderProducts) {
-      const designer = await User.findById(product.designerRef).select("email");
-      if (designer) designerEmails.add(designer.email);
-    }
-
-    // Send email notification to each designer
-    designerEmails.forEach(async (email) => {
-      try {
-        await notifyDesignerByEmail(email, orderProducts);
-      } catch (error) {
-        console.error(`Error sending email to designer ${email}:`, error);
+    // Emails, invoice, FCM: never throw so webhook can return 200 and avoid duplicate order creation on retry
+    try {
+      const designerEmails = new Set();
+      for (const product of orderProducts) {
+        const designer = await User.findById(product.designerRef).select("email");
+        if (designer) designerEmails.add(designer.email);
       }
-    });
 
-    const email = user.email;
+      designerEmails.forEach(async (email) => {
+        try {
+          await notifyDesignerByEmail(email, orderProducts);
+        } catch (err) {
+          console.error(`Error sending email to designer ${email}:`, err);
+        }
+      });
 
-    // Generate and upload the invoice to Firebase
-    const firebaseUrl = await generateAndUploadInvoice(order);
+      const email = user.email;
 
-    // Send confirmation email with invoice link
-    const mailOptions = {
-      from: "orders@indigorhapsody.com",
-      to: email,
-      subject: "Order Confirmation",
-      html: `
+      // Generate and upload the invoice to Firebase
+      const firebaseUrl = await generateAndUploadInvoice(order);
+
+      // Send confirmation email with invoice link
+      const mailOptions = {
+        from: "orders@indigorhapsody.com",
+        to: email,
+        subject: "Order Confirmation",
+        html: `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -490,17 +501,21 @@ exports.createOrder = async (req, res) => {
       </body>
       </html>
       `,
-    };
+      };
 
-    await transporter.sendMail(mailOptions);
+      await transporter.sendMail(mailOptions);
 
-    // Send FCM Notification
-    if (fcmToken) {
-      await sendFcmNotification(
-        fcmToken,
-        "Order Placed Successfully",
-        `Your order with ID ${order.orderId} has been placed successfully.`
-      );
+      // Send FCM Notification
+      if (fcmToken) {
+        await sendFcmNotification(
+          fcmToken,
+          "Order Placed Successfully",
+          `Your order with ID ${order.orderId} has been placed successfully.`
+        );
+      }
+    } catch (postOrderError) {
+      // Log but do not throw: order is already saved; failing email/invoice must not cause webhook retry or duplicate orders
+      console.error("Order created but post-order step failed (email/invoice/FCM):", postOrderError);
     }
 
     res.status(201).json({
