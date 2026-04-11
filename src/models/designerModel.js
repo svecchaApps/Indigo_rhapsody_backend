@@ -6,6 +6,11 @@ const designerSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
+  comission_total:{
+    type: Number,
+    default: 0,
+  },
+
   status: {
     type: Boolean,
     default: true,

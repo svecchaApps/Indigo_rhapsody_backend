@@ -1,0 +1,63 @@
+{
+  "description": "Request body for creating an order after Razorpay payment",
+  "endpoint": "POST /order",
+  "razorpay_order_example": {
+    "userId": "507f1f77bcf86cd799439011",
+    "cartId": "507f1f77bcf86cd799439012",
+    "paymentMethod": "Razorpay",
+    "address": {
+      "street": "123 Main Street, Apartment 4B",
+      "city": "Mumbai",
+      "state": "Maharashtra",
+      "pincode": "400001",
+      "phoneNumber": "+919876543210"
+    },
+    "notes": "Payment completed via Razorpay - Payment ID: pay_1234567890abcdef, Order ID: order_1234567890abcdef"
+  },
+  "razorpay_order_minimal": {
+    "userId": "507f1f77bcf86cd799439011",
+    "cartId": "507f1f77bcf86cd799439012",
+    "paymentMethod": "razorpay",
+    "address": {
+      "street": "456 Park Avenue",
+      "city": "Delhi",
+      "state": "Delhi",
+      "pincode": "110001"
+    }
+  },
+  "razorpay_order_with_full_details": {
+    "userId": "507f1f77bcf86cd799439011",
+    "cartId": "507f1f77bcf86cd799439012",
+    "paymentMethod": "Razorpay",
+    "address": {
+      "street": "789 MG Road, Near Metro Station",
+      "city": "Bangalore",
+      "state": "Karnataka",
+      "pincode": "560001",
+      "phoneNumber": "+919876543211"
+    },
+    "notes": "Payment ID: pay_ABC123XYZ, Razorpay Order ID: order_DEF456UVW, Amount: ₹5000, Transaction completed at 2024-01-15 14:30:00"
+  },
+  "field_descriptions": {
+    "userId": "MongoDB ObjectId of the user - must be valid and exist in database",
+    "cartId": "MongoDB ObjectId of the cart - must belong to userId and contain products",
+    "paymentMethod": "Use 'Razorpay' or 'razorpay' (case-insensitive)",
+    "address": {
+      "street": "Required - Complete street address",
+      "city": "Required - City name",
+      "state": "Required - State name",
+      "pincode": "Required - 6-digit PIN code",
+      "phoneNumber": "Optional - Will use user's phoneNumber if not provided"
+    },
+    "notes": "Optional - Recommended to include Razorpay payment details for reference"
+  },
+  "notes_suggestions": [
+    "Payment completed via Razorpay - Payment ID: {paymentId}, Order ID: {orderId}",
+    "Razorpay transaction successful - Payment ID: {paymentId}",
+    "Payment ID: {paymentId}, Razorpay Order ID: {orderId}, Amount: ₹{amount}"
+  ]
+}
+
+
+
+

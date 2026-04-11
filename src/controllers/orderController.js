@@ -327,9 +327,15 @@ exports.createOrder = async (req, res) => {
 
     await order.save();
 
-    // Clear the user's cart
+    // Clear the user's cart and reset discount/totals
     cart.products = [];
     cart.discount_amount = 0;
+    cart.discount_applied = false;
+    cart.subtotal = 0;
+    cart.total_amount = 0;
+    cart.appliedCoupon = undefined;
+    cart.couponAppliedAt = undefined;
+    cart.couponHoldExpiry = undefined;
     await cart.save();
 
     const designerEmails = new Set();
@@ -338,7 +344,6 @@ exports.createOrder = async (req, res) => {
       if (designer) designerEmails.add(designer.email);
     }
 
-    // Send email notification to each designer
     designerEmails.forEach(async (email) => {
       try {
         await notifyDesignerByEmail(email, orderProducts);
@@ -353,146 +358,146 @@ exports.createOrder = async (req, res) => {
     const firebaseUrl = await generateAndUploadInvoice(order);
 
     // Send confirmation email with invoice link
-    const mailOptions = {
-      from: "orders@indigorhapsody.com",
-      to: email,
-      subject: "Order Confirmation",
-      html: `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Order Confirmation</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f9f9f9;
-          }
-          .email-container {
-            max-width: 600px;
-            margin: 20px auto;
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-          }
-          .header {
-            background-color: #004080;
-            color: #ffffff;
-            text-align: center;
-            padding: 20px;
-          }
-          .header img {
-            max-width: 100px;
-            margin-bottom: 10px;
-          }
-          .header h1 {
-            margin: 0;
-            font-size: 28px;
-          }
-          .header p {
-            margin: 5px 0 0;
-            font-size: 14px;
-          }
-          .content {
-            padding: 20px;
-            color: #333333;
-          }
-          .content h2 {
-            font-size: 20px;
-            margin-bottom: 10px;
-            color: #004080;
-          }
-          .content p {
-            font-size: 16px;
-            margin: 10px 0;
-          }
-          .content .order-details {
-            margin: 20px 0;
-          }
-          .content .order-details table {
-            width: 100%;
-            border-collapse: collapse;
-          }
-          .content .order-details table th,
-          .content .order-details table td {
-            text-align: left;
-            padding: 8px;
-            border-bottom: 1px solid #eeeeee;
-          }
-          .content .order-details table th {
-            color: #666666;
-          }
-          .content .total {
-            font-size: 18px;
-            margin: 10px 0;
-          }
-          .footer {
-            background-color: #f4f4f4;
-            padding: 15px;
-            text-align: center;
-            font-size: 14px;
-            color: #999999;
-          }
-          .footer a {
-            color: #004080;
-            text-decoration: none;
-            margin: 0 5px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="header">
-            <img
-              src="https://firebasestorage.googleapis.com/v0/b/sveccha-11c31.appspot.com/o/Logo.png?alt=media&token=c8b4c22d-8256-4092-8b46-e89e001bd1fe"
-              alt="Logo"
-            />
-            <h1>Order Received!</h1>
-            <p>Order No: ${order.orderId}</p>
-          </div>
-          <div class="content">
-            <h2>Hello, ${user.displayName}!</h2>
-            <p>Thank you for your order. Below are the details of your order:</p>
-            <div class="order-details">
-              <table>
-                <tr>
-                  <th>Item</th>
-                  <th>Quantity</th>
-                  <th>Price</th>
-                </tr>
-                ${orderProducts
-          .map(
-            (product) => `
-                <tr>
-                  <td>${product.productName}</td>
-                  <td>${product.quantity}</td>
-                  <td>${product.price}</td>
-                </tr>
-                `
-          )
-          .join("")}
-              </table>
-            </div>
-            <p class="total"><strong>Subtotal:</strong> ₹${subtotal}</p>
-            <p class="total"><strong>Shipping:</strong> ₹${shipping_cost}</p>
-            <p class="total"><strong>Discount:</strong> -₹${discount_amount}</p>
-            <p class="total"><strong>Total Amount:</strong> ₹${total_amount}</p>
-            <p>You can download your invoice <a href="${firebaseUrl}">here</a>.</p>
-          </div>
-          <div class="footer">
-            <p>Follow us: <a href="https://twitter.com">Twitter</a> | <a href="https://facebook.com">Facebook</a></p>
-          </div>
-        </div>
-      </body>
-      </html>
-      `,
-    };
+    // const mailOptions = {
+    //   from: "orders@indigorhapsody.com",
+    //   to: email,
+    //   subject: "Order Confirmation",
+    //   html: `
+    //   <!DOCTYPE html>
+    //   <html lang="en">
+    //   <head>
+    //     <meta charset="UTF-8" />
+    //     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    //     <title>Order Confirmation</title>
+    //     <style>
+    //       body {
+    //         font-family: Arial, sans-serif;
+    //         margin: 0;
+    //         padding: 0;
+    //         background-color: #f9f9f9;
+    //       }
+    //       .email-container {
+    //         max-width: 600px;
+    //         margin: 20px auto;
+    //         background: #ffffff;
+    //         border-radius: 8px;
+    //         box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    //         overflow: hidden;
+    //       }
+    //       .header {
+    //         background-color: #004080;
+    //         color: #ffffff;
+    //         text-align: center;
+    //         padding: 20px;
+    //       }
+    //       .header img {
+    //         max-width: 100px;
+    //         margin-bottom: 10px;
+    //       }
+    //       .header h1 {
+    //         margin: 0;
+    //         font-size: 28px;
+    //       }
+    //       .header p {
+    //         margin: 5px 0 0;
+    //         font-size: 14px;
+    //       }
+    //       .content {
+    //         padding: 20px;
+    //         color: #333333;
+    //       }
+    //       .content h2 {
+    //         font-size: 20px;
+    //         margin-bottom: 10px;
+    //         color: #004080;
+    //       }
+    //       .content p {
+    //         font-size: 16px;
+    //         margin: 10px 0;
+    //       }
+    //       .content .order-details {
+    //         margin: 20px 0;
+    //       }
+    //       .content .order-details table {
+    //         width: 100%;
+    //         border-collapse: collapse;
+    //       }
+    //       .content .order-details table th,
+    //       .content .order-details table td {
+    //         text-align: left;
+    //         padding: 8px;
+    //         border-bottom: 1px solid #eeeeee;
+    //       }
+    //       .content .order-details table th {
+    //         color: #666666;
+    //       }
+    //       .content .total {
+    //         font-size: 18px;
+    //         margin: 10px 0;
+    //       }
+    //       .footer {
+    //         background-color: #f4f4f4;
+    //         padding: 15px;
+    //         text-align: center;
+    //         font-size: 14px;
+    //         color: #999999;
+    //       }
+    //       .footer a {
+    //         color: #004080;
+    //         text-decoration: none;
+    //         margin: 0 5px;
+    //       }
+    //     </style>
+    //   </head>
+    //   <body>
+    //     <div class="email-container">
+    //       <div class="header">
+    //         <img
+    //           src="https://firebasestorage.googleapis.com/v0/b/sveccha-11c31.appspot.com/o/Logo.png?alt=media&token=c8b4c22d-8256-4092-8b46-e89e001bd1fe"
+    //           alt="Logo"
+    //         />
+    //         <h1>Order Received!</h1>
+    //         <p>Order No: ${order.orderId}</p>
+    //       </div>
+    //       <div class="content">
+    //         <h2>Hello, ${user.displayName}!</h2>
+    //         <p>Thank you for your order. Below are the details of your order:</p>
+    //         <div class="order-details">
+    //           <table>
+    //             <tr>
+    //               <th>Item</th>
+    //               <th>Quantity</th>
+    //               <th>Price</th>
+    //             </tr>
+    //             ${orderProducts
+    //       .map(
+    //         (product) => `
+    //             <tr>
+    //               <td>${product.productName}</td>
+    //               <td>${product.quantity}</td>
+    //               <td>${product.price}</td>
+    //             </tr>
+    //             `
+    //       )
+    //       .join("")}
+    //           </table>
+    //         </div>
+    //         <p class="total"><strong>Subtotal:</strong> ₹${subtotal}</p>
+    //         <p class="total"><strong>Shipping:</strong> ₹${shipping_cost}</p>
+    //         <p class="total"><strong>Discount:</strong> -₹${discount_amount}</p>
+    //         <p class="total"><strong>Total Amount:</strong> ₹${total_amount}</p>
+    //         <p>You can download your invoice <a href="${firebaseUrl}">here</a>.</p>
+    //       </div>
+    //       <div class="footer">
+    //         <p>Follow us: <a href="https://twitter.com">Twitter</a> | <a href="https://facebook.com">Facebook</a></p>
+    //       </div>
+    //     </div>
+    //   </body>
+    //   </html>
+    //   `,
+    // };
 
-    await transporter.sendMail(mailOptions);
+    // await transporter.sendMail(mailOptions);
 
     // Send FCM Notification
     if (fcmToken) {

@@ -6,6 +6,7 @@ const { bucket } = require("../service/firebaseServices"); // Firebase storage c
 const UpdateRequest = require("../models/updateDesignerSchema");
 const Video = require("../models/videosModel");
 const Product = require("../models/productModels");
+const Order = require("../models/orderModel");
 
 // Upload Image Helper Function
 const uploadImage = async (file, folder) => {
@@ -1348,6 +1349,64 @@ exports.updateProductSampleImages = async (req, res) => {
   }
 };
 
+// Delete Product Sample Images for Designer
+exports.deleteProductSampleImages = async (req, res) => {
+  try {
+    const { designerId } = req.params;
+    const { imageIndexes, clearAll } = req.body || {};
+
+    // Validate designer ID
+    if (!designerId || !mongoose.Types.ObjectId.isValid(designerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid designer ID is required",
+      });
+    }
+
+    const designer = await Designer.findById(designerId);
+    if (!designer) {
+      return res.status(404).json({
+        success: false,
+        message: "Designer not found",
+      });
+    }
+
+    let updatedImages = [...(designer.product_sample_images || [])];
+
+    if (clearAll || !imageIndexes || (Array.isArray(imageIndexes) && imageIndexes.length === 0)) {
+      updatedImages = [];
+    } else if (imageIndexes && Array.isArray(imageIndexes) && imageIndexes.length > 0) {
+      const sortedIndexes = [...imageIndexes].sort((a, b) => b - a);
+      sortedIndexes.forEach((index) => {
+        if (index >= 0 && index < updatedImages.length) {
+          updatedImages.splice(index, 1);
+        }
+      });
+    }
+
+    designer.product_sample_images = updatedImages;
+    designer.updatedTime = Date.now();
+    await designer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Product sample images deleted successfully",
+      data: {
+        designerId: designer._id,
+        remainingImages: updatedImages.length,
+        images: updatedImages,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting product sample images:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting product sample images",
+      error: error.message,
+    });
+  }
+};
+
 // Get Product Sample Images for Designer
 exports.getProductSampleImages = async (req, res) => {
   try {
@@ -1387,6 +1446,75 @@ exports.getProductSampleImages = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Error fetching product sample images",
+      error: error.message,
+    });
+  }
+};
+
+// Commission: < 10k total sales = 0%, >= 10k = 20%
+const COMMISSION_THRESHOLD = 10000;
+const COMMISSION_RATE = 0.2;
+
+/**
+ * Calculate and update commission_total for a designer based on their order sales.
+ * Total sales = sum of (price * quantity) for all products of this designer in orders with paymentStatus "Completed".
+ * If total sales < 10,000: commission = 0. If total sales >= 10,000: commission = 20% of total sales.
+ */
+exports.getCommissionTotalForDesigner = async (req, res) => {
+  try {
+    const { designerId } = req.params;
+
+    if (!designerId) {
+      return res.status(400).json({ message: "Designer ID is required" });
+    }
+
+    const designer = await Designer.findById(designerId);
+    if (!designer) {
+      return res.status(404).json({ message: "Designer not found" });
+    }
+
+    // Total sales from orders: only completed payments, only this designer's products
+    const salesResult = await Order.aggregate([
+      { $match: { paymentStatus: "Completed" } },
+      { $unwind: "$products" },
+      {
+        $match: {
+          "products.designerRef":
+            typeof designerId === "string"
+              ? designerId
+              : designerId.toString(),
+        },
+      },
+      {
+        $group: {
+          _id: "$products.designerRef",
+          totalSales: {
+            $sum: { $multiply: ["$products.price", "$products.quantity"] },
+          },
+        },
+      },
+    ]);
+
+    const totalSales = salesResult.length > 0 ? salesResult[0].totalSales : 0;
+    const commission_total =
+      totalSales < COMMISSION_THRESHOLD
+        ? 0
+        : Math.round(totalSales * COMMISSION_RATE * 100) / 100;
+
+    designer.comission_total = commission_total;
+    await designer.save();
+
+    return res.status(200).json({
+      designerId,
+      totalSales,
+      commission_total,
+      commissionRate:
+        totalSales < COMMISSION_THRESHOLD ? 0 : COMMISSION_RATE,
+    });
+  } catch (error) {
+    console.error("Error calculating designer commission:", error);
+    return res.status(500).json({
+      message: "Error calculating designer commission",
       error: error.message,
     });
   }

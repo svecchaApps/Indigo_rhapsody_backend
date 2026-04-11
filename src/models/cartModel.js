@@ -112,6 +112,18 @@ const cartSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  // Coupon applied reference and timestamps
+  appliedCoupon: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Coupon",
+  },
+  couponAppliedAt: {
+    type: Date,
+  },
+  // Hold expiry for the applied coupon (1 day hold window)
+  couponHoldExpiry: {
+    type: Date,
+  },
   expirationDate: {
     type: Date,
   },

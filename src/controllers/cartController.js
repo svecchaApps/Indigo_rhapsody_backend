@@ -97,8 +97,9 @@ exports.createCart = async (req, res) => {
       await product.save();
     }
 
-    // Calculate Shipping Cost based on subtotal
-    const shipping_cost = subtotal > 3000 ? 0 : 99;
+    // Calculate Shipping Cost: ₹99 per product/item
+    const deliveryChargePerItem = 99;
+    const shipping_cost = cart.products.length * deliveryChargePerItem;
 
     // Calculate Total Amount (without GST)
     cart.subtotal = subtotal;
@@ -181,7 +182,9 @@ exports.addItemToCart = async (req, res) => {
       subtotal += item.price * item.quantity;
     });
 
-    const shipping_cost = subtotal > 3000 ? 0 : 99;
+    // Calculate Shipping Cost: ₹99 per product/item
+    const deliveryChargePerItem = 99;
+    const shipping_cost = cart.products.length * deliveryChargePerItem;
 
     cart.subtotal = subtotal;
     cart.tax_amount = 0;  // No GST/tax
@@ -252,7 +255,10 @@ exports.updateQuantity = async (req, res) => {
     cart.products.forEach((item) => {
       subtotal += item.price * item.quantity;
     });
-    const shipping_cost = subtotal > 3000 ? 0 : 99;
+    
+    // Calculate Shipping Cost: ₹99 per product/item
+    const deliveryChargePerItem = 99;
+    const shipping_cost = cart.products.length * deliveryChargePerItem;
 
     cart.subtotal = subtotal;
     cart.tax_amount = 0;  // No GST/tax
@@ -323,7 +329,9 @@ exports.deleteItem = async (req, res) => {
       subtotal += item.price * item.quantity;
     });
 
-    const shipping_cost = subtotal > 3000 ? 0 : 99;
+    // Calculate Shipping Cost: ₹99 per product/item
+    const deliveryChargePerItem = 99;
+    const shipping_cost = cart.products.length * deliveryChargePerItem;
 
     cart.subtotal = subtotal;
     cart.tax_amount = 0;  // No GST/tax
@@ -489,8 +497,9 @@ exports.upsertCart = async (req, res) => {
       subtotal += item.price * item.quantity;
     });
 
-    // Calculate shipping (no tax)
-    const shipping_cost = subtotal > 3000 ? 0 : 99;
+    // Calculate Shipping Cost: ₹99 per product/item
+    const deliveryChargePerItem = 99;
+    const shipping_cost = cart.products.length * deliveryChargePerItem;
 
     // Apply discount if available
     let discount_amount = 0;

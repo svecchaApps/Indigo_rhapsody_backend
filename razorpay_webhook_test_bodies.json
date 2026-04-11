@@ -1,0 +1,141 @@
+{
+  "payment_captured": {
+    "event": "payment.captured",
+    "payload": {
+      "payment": {
+        "entity": {
+          "id": "pay_1234567890abcdef",
+          "entity": "payment",
+          "amount": 50000,
+          "currency": "INR",
+          "status": "captured",
+          "order_id": "order_1234567890abcdef",
+          "invoice_id": null,
+          "international": false,
+          "method": "card",
+          "amount_refunded": 0,
+          "refund_status": null,
+          "captured": true,
+          "description": "Test payment",
+          "card_id": "card_1234567890",
+          "bank": null,
+          "wallet": null,
+          "vpa": null,
+          "email": "customer@example.com",
+          "contact": "+919876543210",
+          "notes": {
+            "order_id": "order_1234567890abcdef"
+          },
+          "fee": 0,
+          "tax": 0,
+          "error_code": null,
+          "error_description": null,
+          "error_source": null,
+          "error_step": null,
+          "error_reason": null,
+          "acquirer_data": {},
+          "created_at": 1699000000
+        }
+      }
+    }
+  },
+  "payment_failed": {
+    "event": "payment.failed",
+    "payload": {
+      "payment": {
+        "entity": {
+          "id": "pay_1234567890abcdef",
+          "entity": "payment",
+          "amount": 50000,
+          "currency": "INR",
+          "status": "failed",
+          "order_id": "order_1234567890abcdef",
+          "invoice_id": null,
+          "international": false,
+          "method": "card",
+          "amount_refunded": 0,
+          "refund_status": null,
+          "captured": false,
+          "description": "Test payment",
+          "card_id": "card_1234567890",
+          "bank": null,
+          "wallet": null,
+          "vpa": null,
+          "email": "customer@example.com",
+          "contact": "+919876543210",
+          "notes": {
+            "order_id": "order_1234567890abcdef"
+          },
+          "fee": 0,
+          "tax": 0,
+          "error_code": "BAD_REQUEST_ERROR",
+          "error_description": "Your card was declined.",
+          "error_source": "customer",
+          "error_step": "payment_authentication",
+          "error_reason": "payment_failed",
+          "acquirer_data": {},
+          "created_at": 1699000000
+        }
+      }
+    }
+  },
+  "order_paid": {
+    "event": "order.paid",
+    "payload": {
+      "order": {
+        "entity": {
+          "id": "order_1234567890abcdef",
+          "entity": "order",
+          "amount": 50000,
+          "amount_paid": 50000,
+          "amount_due": 0,
+          "currency": "INR",
+          "receipt": "receipt_123456",
+          "offer_id": null,
+          "status": "paid",
+          "attempts": 1,
+          "notes": {
+            "order_id": "order_1234567890abcdef"
+          },
+          "created_at": 1699000000
+        }
+      }
+    }
+  },
+  "minimal_payment_captured": {
+    "event": "payment.captured",
+    "payload": {
+      "payment": {
+        "entity": {
+          "id": "pay_test123",
+          "order_id": "order_test123",
+          "amount": 100000,
+          "currency": "INR",
+          "status": "captured",
+          "method": "upi",
+          "created_at": 1699000000
+        }
+      }
+    }
+  },
+  "minimal_payment_failed": {
+    "event": "payment.failed",
+    "payload": {
+      "payment": {
+        "entity": {
+          "id": "pay_test456",
+          "order_id": "order_test456",
+          "amount": 100000,
+          "currency": "INR",
+          "status": "failed",
+          "error_code": "BAD_REQUEST_ERROR",
+          "error_description": "Payment declined by bank"
+        }
+      }
+    }
+  }
+}
+
+
+
+

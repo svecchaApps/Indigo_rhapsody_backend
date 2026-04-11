@@ -1,0 +1,93 @@
+{
+  "description": "Test body examples for creating an order via POST /order",
+  "required_fields": [
+    "userId",
+    "cartId",
+    "paymentMethod",
+    "address"
+  ],
+  "address_required_fields": [
+    "street",
+    "city",
+    "state",
+    "pincode"
+  ],
+  "examples": {
+    "basic_order": {
+      "userId": "507f1f77bcf86cd799439011",
+      "cartId": "507f1f77bcf86cd799439012",
+      "paymentMethod": "cod",
+      "address": {
+        "street": "123 Main Street",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "pincode": "400001",
+        "phoneNumber": "+919876543210"
+      },
+      "notes": "Please deliver before 6 PM"
+    },
+    "razorpay_order": {
+      "userId": "507f1f77bcf86cd799439011",
+      "cartId": "507f1f77bcf86cd799439012",
+      "paymentMethod": "Razorpay",
+      "address": {
+        "street": "456 Park Avenue",
+        "city": "Delhi",
+        "state": "Delhi",
+        "pincode": "110001",
+        "phoneNumber": "+919876543211"
+      },
+      "notes": "Payment completed via Razorpay - Payment ID: pay_1234567890, Order ID: order_1234567890"
+    },
+    "phonepe_order": {
+      "userId": "507f1f77bcf86cd799439011",
+      "cartId": "507f1f77bcf86cd799439012",
+      "paymentMethod": "Phonepe",
+      "address": {
+        "street": "789 MG Road",
+        "city": "Bangalore",
+        "state": "Karnataka",
+        "pincode": "560001",
+        "phoneNumber": "+919876543212"
+      },
+      "notes": "Payment completed via PhonePe"
+    },
+    "minimal_order": {
+      "userId": "507f1f77bcf86cd799439011",
+      "cartId": "507f1f77bcf86cd799439012",
+      "paymentMethod": "cod",
+      "address": {
+        "street": "123 Test Street",
+        "city": "Pune",
+        "state": "Maharashtra",
+        "pincode": "411001"
+      }
+    }
+  },
+  "payment_methods": [
+    "cod",
+    "Razorpay",
+    "razorpay",
+    "Phonepe",
+    "phonepe",
+    "stripe",
+    "paypal"
+  ],
+  "notes": {
+    "userId": "Must be a valid MongoDB ObjectId of an existing User",
+    "cartId": "Must be a valid MongoDB ObjectId of an existing Cart that belongs to the userId",
+    "paymentMethod": "Case-insensitive. Common values: 'cod', 'Razorpay', 'Phonepe', 'stripe', 'paypal'",
+    "address": {
+      "street": "Required - Street address",
+      "city": "Required - City name",
+      "state": "Required - State name",
+      "pincode": "Required - 6-digit PIN code",
+      "phoneNumber": "Optional - Will fallback to user's phoneNumber if not provided"
+    },
+    "notes": "Optional - Additional notes for the order"
+  }
+}
+
+
+
+

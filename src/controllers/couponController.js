@@ -2,6 +2,7 @@ const Coupon = require("../models/couponsModel");
 const mongoose = require("mongoose");
 const User = require("../models/userModel");
 const Cart = require("../models/cartModel");
+const Order = require("../models/orderModel");
 const {
   validateCoupon,
   hasUserUsedCoupon,
@@ -135,6 +136,31 @@ exports.getAllCoupons = async (req, res) => {
   }
 };
 
+// Get only active (non-expired, is_active) coupons
+exports.getActiveCoupons = async (req, res) => {
+  try {
+    const now = new Date();
+    const coupons = await Coupon.find({
+      is_active: true,
+      expiryDate: { $gte: now },
+    }).sort({ expiryDate: 1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Active coupons fetched successfully",
+      data: coupons,
+      count: coupons.length,
+    });
+  } catch (error) {
+    console.error("Error fetching active coupons:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching active coupons",
+      error: error.message,
+    });
+  }
+};
+
 // Get a coupon by ID
 exports.getCouponById = async (req, res) => {
   try {
@@ -236,16 +262,34 @@ exports.applyCouponToCart = async (req, res) => {
         .json({ message: "A coupon is already applied to this cart" });
     }
 
-    // Calculate new totals
+    if (!cart.products || cart.products.length === 0) {
+      return res.status(400).json({
+        message: "Cart is empty. Add items before applying a coupon.",
+      });
+    }
+
     const subtotal = cart.products.reduce(
-      (sum, product) => sum + product.price * product.quantity,
+      (sum, product) => sum + (Number(product.price) || 0) * (Number(product.quantity) || 0),
       0
     );
-    const discountAmount = coupon.couponAmount;
-    const totalAmount =
-      subtotal - discountAmount + cart.shipping_cost + cart.tax_amount;
 
-    // Update cart details
+    if (subtotal <= 0) {
+      return res.status(400).json({
+        message: "Cart subtotal must be greater than zero to apply a coupon.",
+      });
+    }
+
+    const couponAmount = Number(coupon.couponAmount);
+    if (couponAmount <= 0 || !Number.isFinite(couponAmount)) {
+      return res.status(400).json({ message: "Invalid coupon discount amount." });
+    }
+
+    const discountAmount = Math.min(couponAmount, subtotal);
+    const totalAmount = Math.max(
+      0,
+      subtotal - discountAmount + (cart.shipping_cost || 0) + (cart.tax_amount || 0)
+    );
+
     cart.subtotal = roundToTwoDecimals(subtotal);
     cart.discount_applied = true;
     cart.discount_amount = roundToTwoDecimals(discountAmount);
@@ -465,15 +509,36 @@ exports.applyCouponUniversal = async (req, res) => {
         message: "A coupon is already applied to this cart",
       });
 
-    /* ─── compute subtotal & discount ─────────────────────────────────── */
+    /* ─── compute subtotal & discount (edge cases) ─────────────────────── */
+    if (!cart.products || cart.products.length === 0)
+      return res.status(400).json({
+        success: false,
+        message: "Cart is empty. Add items before applying a coupon.",
+      });
+
     const subtotal = cart.products.reduce(
-      (sum, item) => sum + item.price * item.quantity,
+      (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
       0
     );
 
-    const discount = Math.min(coupon.couponAmount, subtotal); // never exceed subtotal
-    const total =
-      subtotal - discount + (cart.shipping_cost || 0) + (cart.tax_amount || 0);
+    if (subtotal <= 0)
+      return res.status(400).json({
+        success: false,
+        message: "Cart subtotal must be greater than zero to apply a coupon.",
+      });
+
+    const couponAmount = Number(coupon.couponAmount);
+    if (couponAmount <= 0 || !Number.isFinite(couponAmount))
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon discount amount.",
+      });
+
+    const discount = Math.min(couponAmount, subtotal); // never exceed subtotal
+    const total = Math.max(
+      0,
+      subtotal - discount + (cart.shipping_cost || 0) + (cart.tax_amount || 0)
+    );
 
     /* ─── update cart ─────────────────────────────────────────────────── */
     cart.subtotal = round2(subtotal);
@@ -481,7 +546,12 @@ exports.applyCouponUniversal = async (req, res) => {
     cart.discount_applied = true;
     cart.total_amount = round2(total);
     cart.lastUpdatedDate = new Date();
-    cart.expirationDate = coupon.expiryDate; // optional: expire cart with coupon
+    cart.expirationDate = coupon.expiryDate; // optional: expire cart with coupon (coupon validity)
+    // Persist which coupon was applied and timestamps for hold window
+    cart.appliedCoupon = coupon._id;
+    cart.couponAppliedAt = new Date();
+    // 1-day hold expiry for placing order
+    cart.couponHoldExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     /* ─── mark coupon used ────────────────────────────────────────────── */
     coupon.usedBy.push(userId);
@@ -513,6 +583,97 @@ exports.applyCouponUniversal = async (req, res) => {
     });
   }
 };
+
+// Cleanup job: remove coupons from carts when coupon validity expired or
+// when an applied coupon was not used to create an order within 1 day.
+const cleanupStaleCouponsFromCarts = async () => {
+  try {
+    const now = new Date();
+    // Find carts with an applied discount that are still active
+    const carts = await Cart.find({
+      discount_applied: true,
+      status: { $ne: "completed" },
+    }).populate("appliedCoupon");
+
+    for (const cart of carts) {
+      // If an order was created from this cart, skip
+      const orderExists = await Order.findOne({ cartId: cart._id });
+      if (orderExists) continue;
+
+      let shouldRemove = false;
+
+      // Remove if coupon hold expired (1 day hold)
+      if (cart.couponHoldExpiry && cart.couponHoldExpiry < now) {
+        shouldRemove = true;
+      }
+
+      // Or remove if couponAppliedAt older than 24 hours (fallback)
+      if (
+        !shouldRemove &&
+        cart.couponAppliedAt &&
+        now - new Date(cart.couponAppliedAt) >= 24 * 60 * 60 * 1000
+      ) {
+        shouldRemove = true;
+      }
+
+      // Or remove if the coupon itself is expired (cart.expirationDate was set to coupon.expiryDate)
+      if (!shouldRemove && cart.expirationDate && cart.expirationDate < now) {
+        shouldRemove = true;
+      }
+
+      if (!shouldRemove) continue;
+
+      // If we have a coupon reference, try to rollback its usage
+      const coupon = cart.appliedCoupon
+        ? await Coupon.findById(cart.appliedCoupon)
+        : null;
+
+      if (coupon) {
+        // Remove this user from usedBy array
+        coupon.usedBy = (coupon.usedBy || []).filter(
+          (u) => u.toString() !== cart.userId.toString()
+        );
+
+        // If coupon was created for a particular user, mark it unused
+        if (coupon.created_for?.length) {
+          const idx = coupon.created_for.findIndex(
+            (u) => u.user_id.toString() === cart.userId.toString()
+          );
+          if (idx !== -1) coupon.created_for[idx].is_used = false;
+        }
+
+        await coupon.save();
+      }
+
+      // Reset cart discount fields and recompute totals
+      cart.discount_applied = false;
+      cart.discount_amount = 0;
+      // recompute subtotal & total without discount
+      const subtotal = (cart.products || []).reduce(
+        (s, p) => s + p.price * p.quantity,
+        0
+      );
+      cart.subtotal = round2(subtotal);
+      cart.total_amount = round2(
+        subtotal + (cart.shipping_cost || 0) + (cart.tax_amount || 0)
+      );
+      cart.appliedCoupon = null;
+      cart.couponAppliedAt = null;
+      cart.couponHoldExpiry = null;
+      cart.expirationDate = null;
+
+      await cart.save();
+      console.log(
+        `Removed stale/expired coupon from cart ${cart._id} for user ${cart.userId}`
+      );
+    }
+  } catch (err) {
+    console.error("Error during cleanupStaleCouponsFromCarts:", err);
+  }
+};
+
+// Export cleanup function so it can be triggered by an external scheduler (e.g. Vercel Cron)
+exports.cleanupStaleCouponsFromCarts = cleanupStaleCouponsFromCarts;
 
 exports.searchUsers = async (req, res) => {
   try {

@@ -4,7 +4,7 @@ const bannerSchema = new mongoose.Schema({
   // Basic Information
   name: {
     type: String,
-    required: true,
+    // required: true,
     trim: true,
   },
   title: {
