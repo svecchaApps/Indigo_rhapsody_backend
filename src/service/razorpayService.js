@@ -55,8 +55,8 @@ class RazorpayService {
     }
 
     /**
-     * Verify payment signature
-     * @param {Object} paymentData - Payment data from webhook
+     * Verify payment signature (for frontend callback)
+     * @param {Object} paymentData - Payment data from frontend
      * @returns {boolean} - Verification result
      */
     static verifyPaymentSignature(paymentData) {
@@ -76,6 +76,29 @@ class RazorpayService {
             return expectedSignature === razorpay_signature;
         } catch (error) {
             console.error('Payment signature verification error:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Verify webhook signature (for server-to-server webhooks)
+     * @param {string} webhookBody - Raw webhook body (JSON string)
+     * @param {string} webhookSignature - Signature from X-Razorpay-Signature header
+     * @returns {boolean} - Verification result
+     */
+    static verifyWebhookSignature(webhookBody, webhookSignature) {
+        try {
+            // Use webhook secret if available, otherwise fall back to key secret
+            const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+            
+            const expectedSignature = crypto
+                .createHmac("sha256", webhookSecret)
+                .update(webhookBody)
+                .digest("hex");
+
+            return expectedSignature === webhookSignature;
+        } catch (error) {
+            console.error('Webhook signature verification error:', error);
             return false;
         }
     }

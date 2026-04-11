@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const StylistBooking = require("../models/stylistBooking");
 const StylistProfile = require("../models/stylistProfile");
 const StylistAvailability = require("../models/stylistAvailability");
+const User = require("../models/userModel");
 const { Chat, Message } = require("../models/chat");
 const RazorpayService = require("../service/razorpayService");
 const AgoraService = require("../service/agoraService");
@@ -116,6 +117,271 @@ class StylistBookingController {
             return res.status(500).json({
                 success: false,
                 message: "Failed to get available slots",
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Book from selected slot
+     * Validates slot availability and creates booking with payment flow
+     */
+    static async bookFromSlot(req, res) {
+        try {
+            const {
+                stylistId,
+                slotDate, // Date in YYYY-MM-DD format
+                slotStartTime, // Time in HH:MM format
+                slotEndTime, // Time in HH:MM format (optional, can be calculated)
+                bookingType = 'consultation',
+                bookingTitle,
+                bookingDescription,
+                duration
+            } = req.body;
+
+            // Get userId from body or authenticated user
+            const userId = req.body.userId || (req.user ? req.user._id : null);
+
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "User ID is required"
+                });
+            }
+
+            // Validate required fields
+            if (!stylistId || !slotDate || !slotStartTime || !bookingTitle || !bookingDescription) {
+                return res.status(400).json({
+                    success: false,
+                    message: "stylistId, slotDate, slotStartTime, bookingTitle, and bookingDescription are required"
+                });
+            }
+
+            // Validate ObjectId
+            if (!mongoose.Types.ObjectId.isValid(stylistId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid stylist ID format"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid user ID format"
+                });
+            }
+
+            // Check if stylist exists and is approved
+            const stylist = await StylistProfile.findOne({
+                _id: stylistId,
+                applicationStatus: 'approved',
+                isApproved: true
+            });
+
+            if (!stylist) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Stylist not found or not approved"
+                });
+            }
+
+            // Get availability
+            const availability = await StylistAvailability.findOne({ stylistId });
+
+            if (!availability || !availability.isActive) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Stylist is not available for booking"
+                });
+            }
+
+            // Parse date and validate slot
+            const bookingDate = new Date(slotDate);
+            const dayOfWeek = bookingDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+            const daySchedule = availability.weeklySchedule[dayOfWeek];
+
+            if (!daySchedule || !daySchedule.isAvailable) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Stylist is not available on ${dayOfWeek}`
+                });
+            }
+
+            // Check if slot exists and is available
+            let selectedSlot = null;
+            if (daySchedule.slots && daySchedule.slots.length > 0) {
+                selectedSlot = daySchedule.slots.find(slot => 
+                    slot.startTime === slotStartTime && 
+                    slot.isAvailable === true
+                );
+
+                if (!selectedSlot) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Selected slot (${slotStartTime}) is not available`
+                    });
+                }
+
+                // Check if slot has reached max bookings
+                const existingBookingsForSlot = await StylistBooking.countDocuments({
+                    stylistId,
+                    scheduledDate: bookingDate,
+                    scheduledTime: slotStartTime,
+                    status: { $in: ['pending', 'confirmed', 'in_progress'] },
+                    isCancelled: false
+                });
+
+                if (existingBookingsForSlot >= selectedSlot.maxBookings) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "This slot is fully booked"
+                    });
+                }
+            } else {
+                // No slots defined, use startTime/endTime range
+                const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+                if (!timeRegex.test(slotStartTime)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid slot time format. Use HH:MM format (24-hour)"
+                    });
+                }
+
+                // Check if time is within available range
+                if (slotStartTime < daySchedule.startTime || slotStartTime >= daySchedule.endTime) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Selected time is outside available hours (${daySchedule.startTime} - ${daySchedule.endTime})`
+                    });
+                }
+            }
+
+            // Check for existing bookings at the same time
+            const existingBooking = await StylistBooking.findOne({
+                stylistId,
+                userId,
+                scheduledDate: bookingDate,
+                scheduledTime: slotStartTime,
+                status: { $in: ['pending', 'confirmed', 'in_progress'] },
+                isCancelled: false
+            });
+
+            if (existingBooking) {
+                return res.status(400).json({
+                    success: false,
+                    message: "You already have a booking at this time"
+                });
+            }
+
+            // Calculate duration
+            let bookingDuration = duration || 60;
+            if (selectedSlot && selectedSlot.duration) {
+                bookingDuration = selectedSlot.duration;
+            } else if (slotEndTime) {
+                // Calculate duration from start and end time
+                const [startHour, startMin] = slotStartTime.split(':').map(Number);
+                const [endHour, endMin] = slotEndTime.split(':').map(Number);
+                const startMinutes = startHour * 60 + startMin;
+                const endMinutes = endHour * 60 + endMin;
+                bookingDuration = endMinutes - startMinutes;
+            }
+
+            // Calculate payment amount
+            const paymentAmount = stylist.stylistPrice || 1000;
+
+            // Create booking with pending status
+            const booking = new StylistBooking({
+                userId,
+                stylistId,
+                bookingType,
+                bookingTitle,
+                bookingDescription,
+                scheduledDate: bookingDate,
+                scheduledTime: slotStartTime,
+                duration: bookingDuration,
+                paymentAmount,
+                status: 'pending',
+                paymentStatus: 'pending'
+            });
+
+            await booking.save();
+
+            // Create Razorpay order immediately
+            const orderData = {
+                amount: paymentAmount,
+                currency: 'INR',
+                receipt: `booking_${booking._id}`,
+                notes: {
+                    bookingId: booking._id.toString(),
+                    userId: userId.toString(),
+                    stylistId: stylistId.toString(),
+                    bookingType: bookingType
+                }
+            };
+
+            const orderResult = await RazorpayService.createOrder(orderData);
+
+            if (!orderResult.success) {
+                // Delete booking if payment order creation fails
+                await StylistBooking.findByIdAndDelete(booking._id);
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to create payment order",
+                    error: orderResult.message
+                });
+            }
+
+            // Update booking with payment order ID
+            booking.razorpayOrderId = orderResult.data.orderId;
+            booking.paymentStatus = 'processing';
+            booking.updatedAt = new Date();
+            await booking.save();
+
+            // Get user details for payment
+            const user = await User.findById(userId);
+
+            // Generate client payment options
+            const paymentOptions = RazorpayService.generatePaymentOptions({
+                ...orderResult.data,
+                name: 'IndigoRhapsody',
+                description: `Stylist Booking - ${bookingTitle}`,
+                customerName: user?.displayName || 'Customer',
+                customerEmail: user?.email || '',
+                customerPhone: user?.phoneNumber || ''
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: "Booking created. Please complete payment to confirm.",
+                data: {
+                    booking: {
+                        _id: booking._id,
+                        bookingId: booking.bookingId,
+                        bookingType: booking.bookingType,
+                        bookingTitle: booking.bookingTitle,
+                        scheduledDate: booking.scheduledDate,
+                        scheduledTime: booking.scheduledTime,
+                        duration: booking.duration,
+                        paymentAmount: booking.paymentAmount,
+                        status: booking.status,
+                        paymentStatus: booking.paymentStatus
+                    },
+                    payment: {
+                        orderId: orderResult.data.orderId,
+                        amount: paymentAmount,
+                        currency: 'INR',
+                        paymentOptions: paymentOptions,
+                        expiresIn: 1800 // 30 minutes
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error("Book from slot error:", error);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to create booking from slot",
                 error: error.message
             });
         }
@@ -424,39 +690,50 @@ class StylistBookingController {
 
             // Send notifications
             try {
-                // Notify user
-                const userNotification = {
-                    userId: booking.userId._id,
-                    title: "Booking Confirmed",
-                    message: `Your booking with ${booking.stylistId.stylistName} has been confirmed.`,
-                    type: "booking_confirmed",
-                    data: {
-                        bookingId: booking._id,
-                        stylistName: booking.stylistId.stylistName,
-                        scheduledDate: booking.scheduledDate,
-                        scheduledTime: booking.scheduledTime
-                    }
-                };
+                // Get user FCM token
+                const user = await User.findById(booking.userId._id);
+                const stylistUser = await User.findById(booking.stylistId.userId);
 
-                await createNotification(userNotification);
-                await sendFcmNotification(userNotification);
+                // Notify user
+                if (user) {
+                    const userNotification = {
+                        userId: booking.userId._id,
+                        message: `Your booking with ${booking.stylistId.stylistName} has been confirmed for ${booking.scheduledDate.toDateString()} at ${booking.scheduledTime}.`,
+                        title: "Booking Confirmed"
+                    };
+
+                    await createNotification(userNotification);
+                    
+                    if (user.fcmToken) {
+                        await sendFcmNotification(
+                            user.fcmToken,
+                            "Booking Confirmed",
+                            `Your booking with ${booking.stylistId.stylistName} has been confirmed.`
+                        );
+                    }
+                }
 
                 // Notify stylist
-                const stylistNotification = {
-                    userId: booking.stylistId.userId,
-                    title: "New Booking Received",
-                    message: `You have a new booking from ${booking.userId.displayName}.`,
-                    type: "new_booking_received",
-                    data: {
-                        bookingId: booking._id,
-                        userName: booking.userId.displayName,
-                        scheduledDate: booking.scheduledDate,
-                        scheduledTime: booking.scheduledTime
-                    }
-                };
+                if (stylistUser) {
+                    const stylistNotification = {
+                        userId: booking.stylistId.userId,
+                        message: `You have a new booking from ${booking.userId.displayName} on ${booking.scheduledDate.toDateString()} at ${booking.scheduledTime}.`,
+                        title: "New Booking Received"
+                    };
 
-                await createNotification(stylistNotification);
-                await sendFcmNotification(stylistNotification);
+                    await createNotification(stylistNotification);
+                    
+                    if (stylistUser.fcmToken) {
+                        await sendFcmNotification(
+                            stylistUser.fcmToken,
+                            "New Booking Received",
+                            `You have a new booking from ${booking.userId.displayName}.`
+                        );
+                    }
+                }
+
+                // Schedule reminder notification (30 minutes before booking)
+                await scheduleBookingReminder(booking);
 
             } catch (notificationError) {
                 console.error("Notification error:", notificationError);
@@ -485,10 +762,27 @@ class StylistBookingController {
 
     /**
      * Get user's bookings
+     * Accepts userId from body, query, or authenticated user
      */
     static async getUserBookings(req, res) {
         try {
-            const userId = req.user._id;
+            // Get userId from body, query, or authenticated user
+            const userId = req.body.userId || req.query.userId || (req.user ? req.user._id : null);
+            
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "User ID is required. Provide userId in body, query, or authenticate."
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid user ID format"
+                });
+            }
+
             const { page = 1, limit = 10, status } = req.query;
 
             const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -499,8 +793,9 @@ class StylistBookingController {
             }
 
             const bookings = await StylistBooking.find(query)
-                .populate('stylistId', 'stylistName stylistImage stylistBio')
-                .sort({ createdAt: -1 })
+                .populate('stylistId', 'stylistName stylistImage stylistBio stylistCity stylistState stylistPhone stylistEmail')
+                .populate('userId', 'displayName email phoneNumber profilePicture')
+                .sort({ scheduledDate: -1, scheduledTime: -1 })
                 .skip(skip)
                 .limit(parseInt(limit));
 
@@ -1139,6 +1434,342 @@ class StylistBookingController {
                 error: error.message
             });
         }
+    }
+
+    /**
+     * Handle Razorpay webhook for stylist bookings (NEW endpoint)
+     * This is a separate webhook endpoint specifically for stylist booking payments
+     * Receives webhooks directly from Razorpay servers
+     */
+    static async handleStylistBookingWebhook(req, res) {
+        try {
+            // Get webhook signature from header
+            const webhookSignature = req.headers['x-razorpay-signature'];
+            
+            if (!webhookSignature) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Missing X-Razorpay-Signature header"
+                });
+            }
+
+            // Get raw body for signature verification
+            let rawBody;
+            if (Buffer.isBuffer(req.body)) {
+                rawBody = req.body.toString('utf8');
+            } else if (typeof req.body === 'string') {
+                rawBody = req.body;
+            } else {
+                // Fallback: stringify the parsed body
+                rawBody = JSON.stringify(req.body);
+            }
+
+            // Verify webhook signature using webhook secret
+            const isValidSignature = RazorpayService.verifyWebhookSignature(rawBody, webhookSignature);
+
+            if (!isValidSignature) {
+                console.error("Invalid webhook signature for stylist booking");
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid webhook signature"
+                });
+            }
+
+            // Parse webhook data
+            const webhookData = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+            const { event, payload } = webhookData;
+
+            console.log(`Stylist booking Razorpay webhook received: ${event}`);
+
+            // Handle different webhook events
+            switch (event) {
+                case 'payment.captured':
+                    return await processStylistBookingPaymentCaptured(payload, res);
+
+                case 'payment.failed':
+                    return await processStylistBookingPaymentFailed(payload, res);
+
+                case 'order.paid':
+                    return await processStylistBookingOrderPaid(payload, res);
+
+                default:
+                    console.log(`Unhandled webhook event for stylist booking: ${event}`);
+                    return res.status(200).json({
+                        success: true,
+                        message: "Webhook received but event not handled",
+                        event: event
+                    });
+            }
+
+        } catch (error) {
+            console.error("Stylist booking Razorpay webhook error:", error);
+            return res.status(500).json({
+                success: false,
+                message: "Failed to process webhook",
+                error: error.message
+            });
+        }
+    }
+}
+
+/**
+ * Process payment.captured webhook for stylist bookings
+ */
+async function processStylistBookingPaymentCaptured(payload, res) {
+    try {
+        const paymentEntity = payload.payment.entity;
+        const orderId = paymentEntity.order_id;
+        const paymentId = paymentEntity.id;
+
+        // Find booking by order ID
+        const booking = await StylistBooking.findOne({
+            razorpayOrderId: orderId
+        }).populate('stylistId userId');
+
+        if (!booking) {
+            console.error(`Stylist booking not found for order: ${orderId}`);
+            return res.status(200).json({
+                success: true,
+                message: "Webhook processed but booking not found",
+                orderId: orderId
+            });
+        }
+
+        // Update booking if not already confirmed
+        if (booking.paymentStatus !== 'completed') {
+            booking.razorpayPaymentId = paymentId;
+            booking.paymentStatus = 'completed';
+            booking.paymentCompletedAt = new Date();
+            booking.status = 'confirmed';
+            booking.updatedAt = new Date();
+            await booking.save();
+
+            // Send notifications
+            try {
+                const user = await User.findById(booking.userId._id);
+                const stylistUser = await User.findById(booking.stylistId.userId);
+
+                // Notify user
+                if (user) {
+                    const userNotification = {
+                        userId: booking.userId._id,
+                        message: `Your booking with ${booking.stylistId.stylistName} has been confirmed for ${booking.scheduledDate.toDateString()} at ${booking.scheduledTime}.`,
+                        title: "Booking Confirmed"
+                    };
+
+                    await createNotification(userNotification);
+                    
+                    if (user.fcmToken) {
+                        await sendFcmNotification(
+                            user.fcmToken,
+                            "Booking Confirmed",
+                            `Your booking with ${booking.stylistId.stylistName} has been confirmed.`
+                        );
+                    }
+                }
+
+                // Notify stylist
+                if (stylistUser) {
+                    const stylistNotification = {
+                        userId: booking.stylistId.userId,
+                        message: `You have a new booking from ${booking.userId.displayName} on ${booking.scheduledDate.toDateString()} at ${booking.scheduledTime}.`,
+                        title: "New Booking Received"
+                    };
+
+                    await createNotification(stylistNotification);
+                    
+                    if (stylistUser.fcmToken) {
+                        await sendFcmNotification(
+                            stylistUser.fcmToken,
+                            "New Booking Received",
+                            `You have a new booking from ${booking.userId.displayName}.`
+                        );
+                    }
+                }
+
+                // Schedule reminder notification
+                await scheduleBookingReminder(booking);
+
+            } catch (notificationError) {
+                console.error("Notification error:", notificationError);
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Stylist booking payment captured webhook processed successfully",
+            data: {
+                bookingId: booking._id,
+                paymentId: paymentId,
+                orderId: orderId
+            }
+        });
+
+    } catch (error) {
+        console.error("Error processing stylist booking payment.captured webhook:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error processing payment captured webhook",
+            error: error.message
+        });
+    }
+}
+
+/**
+ * Process payment.failed webhook for stylist bookings
+ */
+async function processStylistBookingPaymentFailed(payload, res) {
+    try {
+        const paymentEntity = payload.payment.entity;
+        const orderId = paymentEntity.order_id;
+        const paymentId = paymentEntity.id;
+
+        // Find booking by order ID
+        const booking = await StylistBooking.findOne({
+            razorpayOrderId: orderId
+        });
+
+        if (booking) {
+            booking.paymentStatus = 'failed';
+            booking.razorpayPaymentId = paymentId;
+            booking.status = 'pending';
+            booking.updatedAt = new Date();
+            await booking.save();
+
+            // Notify user about payment failure
+            try {
+                const user = await User.findById(booking.userId);
+                if (user && user.fcmToken) {
+                    await sendFcmNotification(
+                        user.fcmToken,
+                        "Payment Failed",
+                        "Your payment for the booking failed. Please try again."
+                    );
+                }
+            } catch (notificationError) {
+                console.error("Notification error:", notificationError);
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Stylist booking payment failed webhook processed",
+            orderId: orderId
+        });
+
+    } catch (error) {
+        console.error("Error processing stylist booking payment.failed webhook:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error processing payment failed webhook",
+            error: error.message
+        });
+    }
+}
+
+/**
+ * Process order.paid webhook for stylist bookings
+ */
+async function processStylistBookingOrderPaid(payload, res) {
+    try {
+        const orderEntity = payload.order.entity;
+        const orderId = orderEntity.id;
+
+        // Find booking by order ID
+        const booking = await StylistBooking.findOne({
+            razorpayOrderId: orderId
+        });
+
+        if (booking && booking.paymentStatus !== 'completed') {
+            // This is a backup confirmation if payment.captured wasn't received
+            booking.paymentStatus = 'completed';
+            booking.status = 'confirmed';
+            booking.updatedAt = new Date();
+            await booking.save();
+
+            // Schedule reminder
+            await scheduleBookingReminder(booking);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Stylist booking order paid webhook processed",
+            orderId: orderId
+        });
+
+    } catch (error) {
+        console.error("Error processing stylist booking order.paid webhook:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error processing order paid webhook",
+            error: error.message
+        });
+    }
+}
+
+/**
+ * Schedule reminder notification for booking (30 minutes before)
+ */
+async function scheduleBookingReminder(booking) {
+    try {
+        // Calculate reminder time (30 minutes before booking)
+        const scheduledDate = new Date(booking.scheduledDate);
+        const [hours, minutes] = booking.scheduledTime.split(':');
+        scheduledDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        
+        const reminderTime = new Date(scheduledDate.getTime() - (30 * 60 * 1000)); // 30 minutes before
+        const now = new Date();
+        
+        // Only schedule if reminder time is in the future
+        if (reminderTime <= now) {
+            console.log(`Reminder time has passed for booking ${booking._id}, skipping reminder`);
+            return;
+        }
+
+        // Calculate delay in milliseconds
+        const delay = reminderTime.getTime() - now.getTime();
+
+        // Schedule notification
+        setTimeout(async () => {
+            try {
+                // Check if booking is still valid
+                const currentBooking = await StylistBooking.findById(booking._id)
+                    .populate('userId', 'displayName email phoneNumber fcmToken')
+                    .populate('stylistId', 'stylistName');
+
+                if (!currentBooking || currentBooking.status === 'cancelled' || currentBooking.isCancelled) {
+                    console.log(`Booking ${booking._id} was cancelled, skipping reminder`);
+                    return;
+                }
+
+                // Get user
+                const user = await User.findById(currentBooking.userId._id);
+
+                if (user && user.fcmToken) {
+                    // Send reminder notification
+                    await sendFcmNotification(
+                        user.fcmToken,
+                        "Booking Reminder",
+                        `Your booking with ${currentBooking.stylistId.stylistName} is in 30 minutes at ${currentBooking.scheduledTime}.`
+                    );
+
+                    // Create notification record
+                    await createNotification({
+                        userId: user._id,
+                        message: `Your booking with ${currentBooking.stylistId.stylistName} is in 30 minutes at ${currentBooking.scheduledTime}.`,
+                        title: "Booking Reminder"
+                    });
+
+                    console.log(`Reminder notification sent for booking ${booking._id}`);
+                }
+            } catch (error) {
+                console.error(`Error sending reminder for booking ${booking._id}:`, error);
+            }
+        }, delay);
+
+        console.log(`Reminder scheduled for booking ${booking._id} at ${reminderTime}`);
+    } catch (error) {
+        console.error("Error scheduling booking reminder:", error);
     }
 }
 

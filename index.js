@@ -70,6 +70,10 @@ connectDB();
 
 app.use(express.json());
 
+// Raw body parser for Razorpay webhook (must be before stylist-booking routes)
+// This allows proper signature verification for webhooks
+app.use('/stylist-booking/razorpay-webhook', express.raw({ type: 'application/json' }));
+
 app.use("/products", productRoutes);
 app.use("/queries", queryRoutes);
 app.use("/category", categoryRoutes);

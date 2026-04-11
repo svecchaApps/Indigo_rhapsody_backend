@@ -12,7 +12,12 @@ router.get(
     stylistBookingController.getAvailableSlots
 );
 
-// User routes (authentication required)
+// User routes (authentication optional - can use userId parameter)
+router.post(
+    "/book-from-slot",
+    stylistBookingController.bookFromSlot
+);
+
 router.post(
     "/create",
     authMiddleware,
@@ -25,14 +30,23 @@ router.post(
     stylistBookingController.initiatePayment
 );
 
+// Payment callback (from frontend after payment)
 router.post(
     "/payment/callback",
     stylistBookingController.handlePaymentCallback
 );
 
+// NEW Razorpay webhook endpoint for stylist bookings (server-to-server from Razorpay)
+// This is a separate webhook endpoint - does not disturb existing /payment/callback
+// Note: This route should use express.raw() middleware in index.js for proper signature verification
+router.post(
+    "/razorpay-webhook",
+    stylistBookingController.handleStylistBookingWebhook
+);
+
+// Public route - accepts userId as parameter
 router.get(
     "/user-bookings",
-    authMiddleware,
     stylistBookingController.getUserBookings
 );
 
