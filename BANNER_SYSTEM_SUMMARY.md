@@ -5,7 +5,6 @@ A comprehensive banner management system has been successfully created for the I
 
 ---
 
-## 📁 Files Created/Updated
 
 ### 1. **Database Model**
 - **File**: `src/models/bannerModel.js`
